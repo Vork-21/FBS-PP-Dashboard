@@ -1,0 +1,436 @@
+/* ===================================
+   PAYMENT PLAN ANALYSIS SYSTEM
+   Dashboard-Specific Styles
+   =================================== */
+
+/* Metric Cards */
+.metric-card {
+    background: var(--gradient-metric);
+    color: var(--white);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-xl);
+    text-align: center;
+    transition: var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+}
+
+.metric-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+    transform: rotate(45deg);
+    transition: var(--transition-slow);
+    opacity: 0;
+}
+
+.metric-card:hover {
+    transform: scale(1.05) translateY(-5px);
+    box-shadow: var(--shadow-xl);
+}
+
+.metric-card:hover::before {
+    opacity: 1;
+    animation: shimmer 1.5s ease-in-out;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) rotate(45deg); }
+}
+
+.metric-value {
+    font-size: var(--font-size-4xl);
+    font-weight: var(--font-weight-bold);
+    margin-bottom: var(--spacing-sm);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    line-height: 1;
+}
+
+.metric-label {
+    font-size: var(--font-size-base);
+    opacity: 0.9;
+    font-weight: var(--font-weight-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Metric Card Variations */
+.metric-card.bg-primary {
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+}
+
+.metric-card.bg-success {
+    background: var(--gradient-success);
+}
+
+.metric-card.bg-warning {
+    background: var(--gradient-warning);
+}
+
+.metric-card.bg-danger {
+    background: var(--gradient-danger);
+}
+
+.metric-card.bg-info {
+    background: linear-gradient(135deg, var(--info-color), var(--info-light));
+}
+
+/* Upload Area */
+.upload-area {
+    border: 3px dashed var(--light-gray);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2xl);
+    text-align: center;
+    transition: var(--transition-normal);
+    cursor: pointer;
+    background: var(--gradient-subtle);
+    position: relative;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.upload-area:hover {
+    border-color: var(--secondary-color);
+    background: linear-gradient(135deg, #f0f8ff, #e6f3ff);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.upload-area.dragover {
+    border-color: var(--success-color);
+    background: linear-gradient(135deg, #f0fff0, #e6ffe6);
+    transform: scale(1.02);
+}
+
+.upload-area i {
+    color: var(--medium-gray);
+    transition: var(--transition-normal);
+}
+
+.upload-area:hover i {
+    color: var(--secondary-color);
+    transform: scale(1.1);
+}
+
+.upload-area.dragover i {
+    color: var(--success-color);
+    animation: bounce 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes bounce {
+    from { transform: translateY(0px) scale(1.1); }
+    to { transform: translateY(-10px) scale(1.2); }
+}
+
+.upload-area h5 {
+    color: var(--dark-gray);
+    margin: var(--spacing-md) 0;
+    font-weight: var(--font-weight-semibold);
+}
+
+.upload-area p {
+    color: var(--medium-gray);
+    margin: 0;
+    font-size: var(--font-size-sm);
+}
+
+/* Progress Container */
+.progress-container {
+    margin: var(--spacing-lg) 0;
+    display: none;
+}
+
+.progress-container.show {
+    display: block;
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.progress {
+    height: 12px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background-color: var(--light-gray);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.progress-bar {
+    background: linear-gradient(90deg, var(--secondary-color), var(--secondary-light));
+    transition: width 0.6s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-bar-striped {
+    background-image: linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent);
+    background-size: 1rem 1rem;
+}
+
+.progress-bar-animated {
+    animation: progress-bar-stripes 1s linear infinite;
+}
+
+@keyframes progress-bar-stripes {
+    0% { background-position: 0 0; }
+    100% { background-position: 1rem 0; }
+}
+
+/* Chart Containers */
+.chart-container {
+    position: relative;
+    height: 300px;
+    margin: var(--spacing-md) 0;
+}
+
+.chart-container canvas {
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Quick Action Cards */
+.quick-action-card {
+    text-align: center;
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    transition: var(--transition-normal);
+    background: var(--white);
+    border: 2px solid var(--light-gray);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 120px;
+}
+
+.quick-action-card:hover {
+    border-color: var(--secondary-color);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+}
+
+.quick-action-card i {
+    font-size: var(--font-size-2xl);
+    margin-bottom: var(--spacing-sm);
+    transition: var(--transition-normal);
+}
+
+.quick-action-card:hover i {
+    transform: scale(1.1);
+}
+
+.quick-action-card .btn {
+    border: none;
+    background: transparent;
+    color: var(--dark-gray);
+    padding: var(--spacing-md);
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-md);
+    transition: var(--transition-normal);
+}
+
+.quick-action-card .btn:hover {
+    background: var(--gradient-primary);
+    color: var(--white);
+}
+
+/* Class Filter Buttons */
+.class-filter-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: center;
+}
+
+.class-filter-btn {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-pill);
+    border: 2px solid var(--secondary-color);
+    background: transparent;
+    color: var(--secondary-color);
+    font-weight: var(--font-weight-medium);
+    transition: var(--transition-normal);
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.class-filter-btn:hover {
+    background: var(--secondary-color);
+    color: var(--white);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+}
+
+.class-filter-btn.active {
+    background: var(--secondary-color);
+    color: var(--white);
+}
+
+.class-filter-btn i {
+    margin-right: var(--spacing-xs);
+}
+
+/* Critical Issues Section */
+.critical-issues-container {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: var(--spacing-sm);
+}
+
+.critical-issues-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.critical-issues-container::-webkit-scrollbar-track {
+    background: var(--light-gray);
+    border-radius: var(--radius-sm);
+}
+
+.critical-issues-container::-webkit-scrollbar-thumb {
+    background: var(--medium-gray);
+    border-radius: var(--radius-sm);
+}
+
+.critical-issues-container::-webkit-scrollbar-thumb:hover {
+    background: var(--dark-gray);
+}
+
+.critical-issue-item {
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    border-left: 4px solid var(--danger-color);
+    background: var(--severity-critical);
+    transition: var(--transition-normal);
+}
+
+.critical-issue-item:hover {
+    transform: translateX(5px);
+    box-shadow: var(--shadow-md);
+}
+
+.critical-issue-item h6 {
+    color: var(--danger-dark);
+    margin-bottom: var(--spacing-sm);
+    font-weight: var(--font-weight-semibold);
+}
+
+.critical-issue-item p {
+    color: var(--dark-gray);
+    margin-bottom: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+}
+
+.critical-issue-item small {
+    color: var(--medium-gray);
+    font-style: italic;
+}
+
+/* Key Insights Section */
+.insight-item {
+    margin-bottom: var(--spacing-lg);
+    padding: var(--spacing-md);
+    background: var(--white);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition-normal);
+}
+
+.insight-item:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.insight-item h6 {
+    color: var(--primary-color);
+    margin-bottom: var(--spacing-sm);
+    font-weight: var(--font-weight-semibold);
+    display: flex;
+    align-items: center;
+}
+
+.insight-item h6 i {
+    margin-right: var(--spacing-sm);
+}
+
+.insight-item .progress {
+    margin: var(--spacing-sm) 0;
+}
+
+.insight-item p {
+    margin: 0;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+}
+
+.insight-item small {
+    color: var(--medium-gray);
+    font-size: var(--font-size-sm);
+}
+
+/* Dashboard Responsive Design */
+@media (max-width: 992px) {
+    .metric-value {
+        font-size: var(--font-size-3xl);
+    }
+    
+    .chart-container {
+        height: 250px;
+    }
+    
+    .quick-action-card {
+        margin-bottom: var(--spacing-md);
+    }
+}
+
+@media (max-width: 768px) {
+    .metric-card {
+        margin-bottom: var(--spacing-md);
+    }
+    
+    .metric-value {
+        font-size: var(--font-size-2xl);
+    }
+    
+    .upload-area {
+        padding: var(--spacing-lg);
+        min-height: 150px;
+    }
+    
+    .class-filter-container {
+        justify-content: center;
+    }
+    
+    .chart-container {
+        height: 200px;
+    }
+}
+
+@media (max-width: 576px) {
+    .metric-card {
+        padding: var(--spacing-lg);
+    }
+    
+    .upload-area h5 {
+        font-size: var(--font-size-lg);
+    }
+    
+    .upload-area i {
+        font-size: var(--font-size-2xl);
+    }
+}
