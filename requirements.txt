@@ -1,0 +1,112 @@
+# Enhanced Payment Plan Analysis System - Requirements
+# Phase 2: FastAPI Web Application - Python 3.12 Compatible
+
+# Core Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Template Engine
+jinja2==3.1.2
+
+# Data Processing - Updated for Python 3.12 compatibility
+pandas==2.1.4
+numpy==1.26.0  # Updated: Compatible with Python 3.12
+
+# Excel/CSV Processing
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+
+# Date/Time Handling
+python-dateutil==2.8.2
+
+# File Handling
+aiofiles==23.2.1
+
+# HTTP Client (for potential future API integrations)
+httpx==0.25.2
+
+# Data Validation
+pydantic==2.5.0
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Type Hints Support
+typing-extensions==4.8.0
+
+
+# JSON Handling
+orjson==3.9.10
+
+# Utilities
+pathlib2==2.3.7
+
+# Testing (Optional - for development)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+
+# Security (for production deployment)
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Database Support (for future Phase 4)
+sqlalchemy==2.0.23
+alembic==1.12.1
+
+# Optional: For PDF generation in custom reports
+# reportlab==4.0.7
+
+# Optional: For advanced charting
+# plotly==5.17.0
+# matplotlib==3.8.2
+
+# Optional: For email notifications
+# sendgrid==6.10.0
+# smtplib (built-in)
+
+# Optional: For advanced data analysis
+# scipy==1.11.4
+# scikit-learn==1.3.2
+
+# Development Tools (Optional)
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
+
+# Production Server (Alternative to uvicorn)
+# gunicorn==21.2.0
+
+# Logging and Monitoring
+loguru==0.7.2
+
+# Configuration Management
+pyyaml==6.0.1
+
+# Timezone Support
+pytz==2023.3
+
+# Rich Console Output (for CLI)
+rich==13.7.0
+
+# Progress Bars
+tqdm==4.66.1
+
+# Memory Usage Optimization
+psutil==5.9.6
+
+# File System Watching (for development)
+watchfiles==0.21.0
+
+# Static File Serving
+whitenoise==6.6.0
+
+# Rate Limiting (for production)
+slowapi==0.1.9
+
+# Caching (for performance)
+redis==5.0.1
+python-redis==0.2.0
+
+# Health Checks
+requests==2.31.0
