@@ -143,7 +143,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
+<script>        
     let allPriorities = [];
     let filteredPriorities = [];
     let currentPage = 1;
@@ -163,6 +163,20 @@
             const planDetails = data.payment_plan_details || [];
             allPriorities = planDetails
                 .filter(plan => (plan.months_behind || 0) > 0)
+                .map(plan => {
+                    // FIXED: Ensure months behind is whole number
+                    const monthsBehind = Math.ceil(plan.months_behind || 0);
+                    
+                    // FIXED: Cap deficit at total balance owed
+                    const rawDeficit = monthsBehind * (plan.monthly_payment || 0);
+                    const cappedDeficit = Math.min(rawDeficit, plan.total_owed || 0);
+                    
+                    return {
+                        ...plan,
+                        months_behind: monthsBehind,  // Always whole number
+                        payment_deficit: cappedDeficit  // Capped deficit
+                    };
+                })
                 .sort((a, b) => {
                     // Sort by months behind (desc), then by balance (desc)
                     if (b.months_behind !== a.months_behind) {
@@ -195,12 +209,12 @@
 
     function applyFilters() {
         const classFilter = document.getElementById('classFilter').value;
-        const monthsFilter = parseFloat(document.getElementById('monthsFilter').value);
+        const monthsFilter = parseInt(document.getElementById('monthsFilter').value);
         const balanceFilter = parseFloat(document.getElementById('balanceFilter').value);
 
         filteredPriorities = allPriorities.filter(item => {
             if (classFilter !== 'all' && item.class_field !== classFilter) return false;
-            if ((item.months_behind || 0) < monthsFilter) return false;
+            if (item.months_behind < monthsFilter) return false;  // Already whole number
             if ((item.total_owed || 0) < balanceFilter) return false;
             return true;
         });
@@ -226,19 +240,21 @@
 
         const totalBehind = allPriorities.length;
         const totalOwed = allPriorities.reduce((sum, item) => sum + (item.total_owed || 0), 0);
-        const totalDeficit = allPriorities.reduce((sum, item) => {
-            const deficit = (item.months_behind || 0) * (item.monthly_payment || 0);
-            return sum + deficit;
-        }, 0);
-        const avgMonthsBehind = allPriorities.reduce((sum, item) => sum + (item.months_behind || 0), 0) / totalBehind;
+        
+        // FIXED: Use capped deficit calculation
+        const totalDeficit = allPriorities.reduce((sum, item) => sum + (item.payment_deficit || 0), 0);
+        
+        // FIXED: Average months behind using whole numbers
+        const avgMonthsBehind = Math.ceil(
+            allPriorities.reduce((sum, item) => sum + item.months_behind, 0) / totalBehind
+        );
 
-        // Group by severity
-        const critical = allPriorities.filter(item => (item.months_behind || 0) >= 3).length;
+        // Group by severity using whole months
+        const critical = allPriorities.filter(item => item.months_behind >= 3).length;
         const warning = allPriorities.filter(item => {
-            const months = item.months_behind || 0;
-            return months >= 1 && months < 3;
+            return item.months_behind >= 1 && item.months_behind < 3;
         }).length;
-        const mild = allPriorities.filter(item => (item.months_behind || 0) < 1).length;
+        const mild = allPriorities.filter(item => item.months_behind < 1).length; // Should be 0 now
 
         container.innerHTML = `
             <div class="row">
@@ -257,12 +273,12 @@
                 <div class="col-md-3 mb-3">
                     <div class="text-center p-3 border rounded bg-light">
                         <div class="h4 text-info">${formatCurrency(totalDeficit)}</div>
-                        <div class="text-muted">Payment Deficit</div>
+                        <div class="text-muted">Payment Deficit (Capped)</div>
                     </div>
                 </div>
                 <div class="col-md-3 mb-3">
                     <div class="text-center p-3 border rounded bg-light">
-                        <div class="h4 text-secondary">${avgMonthsBehind.toFixed(1)}</div>
+                        <div class="h4 text-secondary">${avgMonthsBehind}</div>
                         <div class="text-muted">Avg Months Behind</div>
                     </div>
                 </div>
@@ -278,7 +294,7 @@
                 <div class="col-md-4">
                     <div class="text-center p-2 border rounded severity-warning">
                         <div class="h5 text-warning">${warning}</div>
-                        <div class="small">Warning (1-3 months)</div>
+                        <div class="small">Warning (1-2 months)</div>
                     </div>
                 </div>
                 <div class="col-md-4">
@@ -299,11 +315,12 @@
 
         tbody.innerHTML = pageData.map((item, index) => {
             const priority = startIndex + index + 1;
-            const monthsBehind = item.months_behind || 0;
+            const monthsBehind = item.months_behind; // Already whole number
             const severityClass = monthsBehind >= 3 ? 'table-danger' : 
                                  monthsBehind >= 1 ? 'table-warning' : 'table-info';
             
-            const deficit = monthsBehind * (item.monthly_payment || 0);
+            // Use the capped deficit
+            const deficit = item.payment_deficit;
             
             return `
                 <tr class="${severityClass}">
@@ -313,6 +330,8 @@
                     </td>
                     <td>
                         <strong>${item.customer_name}</strong>
+                        ${item.payment_deficit < item.total_owed ? '' : 
+                          '<br><small class="text-danger"><i class="fas fa-warning"></i> Needs Renegotiation</small>'}
                     </td>
                     <td>
                         <small class="text-muted">${item.plan_id}</small>
@@ -321,7 +340,8 @@
                         ${item.class_field ? `<span class="badge bg-secondary">${item.class_field}</span>` : '<span class="text-muted">-</span>'}
                     </td>
                     <td>
-                        <span class="fw-bold text-danger">${monthsBehind.toFixed(1)}</span>
+                        <span class="fw-bold text-danger">${monthsBehind}</span>
+                        <br><small class="text-muted">months</small>
                     </td>
                     <td>
                         <strong class="text-success">${formatCurrency(item.total_owed || 0)}</strong>
@@ -331,15 +351,29 @@
                     </td>
                     <td>
                         <span class="text-danger fw-bold">${formatCurrency(deficit)}</span>
+                        ${deficit >= (item.total_owed || 0) ? 
+                          '<br><small class="text-warning">Capped at balance</small>' : ''}
                     </td>
                     <td>
                         <span class="status-badge status-${item.status || 'behind'}">
-                            ${(item.status || 'behind').charAt(0).toUpperCase() + (item.status || 'behind').slice(1)}
+                            ${getStatusDisplay(item.status, monthsBehind)}
                         </span>
                     </td>
                 </tr>
             `;
         }).join('');
+    }
+
+    function getStatusDisplay(status, monthsBehind) {
+        if (monthsBehind >= 6) {
+            return 'Critical';
+        } else if (monthsBehind >= 3) {
+            return 'Severe';
+        } else if (monthsBehind >= 1) {
+            return 'Behind';
+        } else {
+            return 'Current';
+        }
     }
 
     function renderPagination() {
@@ -390,23 +424,22 @@
 
     async function exportCollectionsList() {
         try {
-            // Create CSV data
+            // Create CSV data with fixed calculations
             const csvData = [
-                ['Priority', 'Customer', 'Plan ID', 'Class', 'Months Behind', 'Balance Owed', 'Monthly Payment', 'Payment Deficit', 'Status']
+                ['Priority', 'Customer', 'Plan ID', 'Class', 'Months Behind', 'Balance Owed', 'Monthly Payment', 'Payment Deficit (Capped)', 'Status']
             ];
             
             filteredPriorities.forEach((item, index) => {
-                const deficit = (item.months_behind || 0) * (item.monthly_payment || 0);
                 csvData.push([
                     index + 1,
                     item.customer_name,
                     item.plan_id,
                     item.class_field || '',
-                    (item.months_behind || 0).toFixed(1),
+                    item.months_behind, // Already whole number
                     item.total_owed || 0,
                     item.monthly_payment || 0,
-                    deficit,
-                    item.status || 'behind'
+                    item.payment_deficit, // Already capped
+                    getStatusDisplay(item.status, item.months_behind)
                 ]);
             });
             
@@ -438,6 +471,61 @@
         showToast('Refreshing collection data...', 'info');
         await loadCollectionData();
         showToast('Data refreshed', 'success');
+    }
+
+    // FIXED: Currency formatting function
+    function formatCurrency(amount) {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(amount);
+    }
+
+    // FIXED: Toast function for error handling
+    function showToast(message, type) {
+        // Create toast container if it doesn't exist
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            container.className = 'position-fixed top-0 end-0 p-3';
+            container.style.zIndex = '1080';
+            document.body.appendChild(container);
+        }
+        
+        const toastId = 'toast-' + Date.now();
+        const icons = {
+            success: 'fas fa-check-circle',
+            danger: 'fas fa-exclamation-triangle',
+            warning: 'fas fa-exclamation-circle',
+            info: 'fas fa-info-circle'
+        };
+        
+        const iconHtml = `<i class="${icons[type]} me-2"></i>`;
+        
+        const toastHtml = `
+            <div id="${toastId}" class="toast align-items-center text-white bg-${type}" role="alert">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${iconHtml}${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            </div>
+        `;
+        
+        container.insertAdjacentHTML('beforeend', toastHtml);
+        
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement, { delay: 5000 });
+        toast.show();
+        
+        // Remove element after hide
+        toastElement.addEventListener('hidden.bs.toast', () => {
+            toastElement.remove();
+        });
     }
 </script>
 {% endblock %}
