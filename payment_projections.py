@@ -1,6 +1,9 @@
 """
-Payment Projections Calculator - Clean Python Implementation
-Handles all payment frequencies correctly without JavaScript complexity
+FIXED Payment Projections Calculator - Handles Behind Customers Properly
+- Uses 15th of month for all payment dates
+- Provides scenarios for customers who need renegotiation
+- Always uses whole months (no decimals)
+- Caps deficits at balance owed
 """
 
 from datetime import datetime, timedelta
@@ -8,6 +11,7 @@ from dateutil.relativedelta import relativedelta
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 import calendar
+import math
 
 @dataclass
 class PaymentProjection:
@@ -31,10 +35,13 @@ class CustomerProjection:
     total_owed: float
     completion_month: int
     plan_count: int
-    timeline: List[Dict]  # Monthly timeline with payment details
+    timeline: List[Dict]
+    status: str  # NEW: current, behind, needs_renegotiation
+    months_behind: int  # NEW: For tracking delinquency
+    renegotiation_needed: bool  # NEW: Flag for contact needed
 
 class PaymentProjectionCalculator:
-    """Clean Python-based payment projection calculator"""
+    """FIXED Payment projection calculator with proper behind customer handling"""
     
     def __init__(self):
         self.frequency_months = {
@@ -43,15 +50,16 @@ class PaymentProjectionCalculator:
             'bimonthly': 2,
             'undefined': 1
         }
+        self.payment_day = 15  # All payments on 15th of month
     
     def calculate_customer_projections(self, customers_data: Dict, months_ahead: int = 12, scenario: str = 'current') -> List[CustomerProjection]:
         """
-        Calculate payment projections for all customers
+        FIXED: Calculate payment projections including behind customers
         
-        Args:
-            customers_data: Customer data from enhanced_main.py results
-            months_ahead: Number of months to project
-            scenario: 'current' or 'restart' (restart ignores months_behind)
+        Scenarios:
+        - 'current': Show projections if customers continue current behavior
+        - 'restart': Show projections if customers restart payment plans today
+        - 'renegotiate': Show projections if payment plans are renegotiated
         """
         projections = []
         
@@ -68,49 +76,289 @@ class PaymentProjectionCalculator:
             if projection:
                 projections.append(projection)
         
-        # Sort by total monthly payment (highest first)
-        projections.sort(key=lambda x: x.total_monthly_payment, reverse=True)
+        # Sort by priority: behind customers first, then by monthly payment
+        projections.sort(key=lambda x: (
+            0 if x.renegotiation_needed else 1,  # Behind customers first
+            -x.total_monthly_payment  # Then by payment amount
+        ))
+        
         return projections
     
     def _calculate_single_customer_projection(self, customer, months_ahead: int, scenario: str) -> Optional[CustomerProjection]:
-        """Calculate projection for a single customer with all their payment plans"""
+        """FIXED: Calculate projection for a single customer with proper behind handling"""
         
-        # Get valid payment plans (ones with payment amounts)
+        # Get valid payment plans
         valid_plans = []
-        for plan in customer.payment_plans:
-            if not plan.has_issues and plan.monthly_amount > 0 and plan.total_open > 0:
-                valid_plans.append(plan)
+        behind_plans = []
         
-        if not valid_plans:
+        for plan in customer.payment_plans:
+            if plan.monthly_amount > 0 and plan.total_open > 0:
+                # Check if customer is behind on this plan
+                months_behind = self._calculate_months_behind_for_plan(plan)
+                
+                if months_behind > 0:
+                    behind_plans.append((plan, months_behind))
+                else:
+                    valid_plans.append(plan)
+        
+        # Determine customer status and handling
+        total_months_behind = sum(months for _, months in behind_plans)
+        all_plans = valid_plans + [plan for plan, _ in behind_plans]
+        
+        if not all_plans:
             return None
         
-        # Generate monthly timeline
+        # Determine projection approach
+        if total_months_behind > 0:
+            if scenario == 'current':
+                # For behind customers in 'current' scenario, show what happens if they don't catch up
+                return self._project_behind_customer_current(customer, all_plans, behind_plans, months_ahead)
+            elif scenario == 'restart':
+                # Show what happens if they restart today (ignore past due)
+                return self._project_customer_restart(customer, all_plans, months_ahead)
+            elif scenario == 'renegotiate':
+                # Show what happens with new payment terms
+                return self._project_customer_renegotiate(customer, all_plans, behind_plans, months_ahead)
+        else:
+            # Customer is current - normal projection
+            return self._project_current_customer(customer, valid_plans, months_ahead)
+    
+    def _calculate_months_behind_for_plan(self, plan) -> int:
+        """Calculate how many months behind a plan is - FIXED to whole numbers"""
+        if not plan.earliest_date:
+            return 0
+        
+        # Calculate months elapsed since first invoice
+        days_elapsed = (datetime.now() - plan.earliest_date).days
+        months_elapsed = math.ceil(days_elapsed / 30.44)  # Always round up
+        
+        # Calculate expected payments
+        if plan.frequency.value == 'monthly':
+            expected_payments = months_elapsed * plan.monthly_amount
+        elif plan.frequency.value == 'quarterly':
+            quarterly_periods = months_elapsed // 3
+            expected_payments = quarterly_periods * plan.monthly_amount
+        elif plan.frequency.value == 'bimonthly':
+            bimonthly_periods = months_elapsed // 2
+            expected_payments = bimonthly_periods * plan.monthly_amount
+        else:
+            expected_payments = months_elapsed * plan.monthly_amount
+        
+        # Calculate actual payments
+        actual_payments = plan.total_original - plan.total_open
+        
+        # Calculate months behind
+        payment_deficit = expected_payments - actual_payments
+        
+        if payment_deficit <= 0:
+            return 0
+        
+        # FIXED: Cap deficit at total owed and convert to months
+        capped_deficit = min(payment_deficit, plan.total_open)
+        
+        if plan.monthly_amount > 0:
+            months_behind_decimal = capped_deficit / plan.monthly_amount
+            
+            # Adjust for frequency
+            if plan.frequency.value == 'quarterly':
+                months_behind_decimal *= 3
+            elif plan.frequency.value == 'bimonthly':
+                months_behind_decimal *= 2
+            
+            return math.ceil(months_behind_decimal)  # Always whole numbers
+        
+        return 0
+    
+    def _project_behind_customer_current(self, customer, all_plans, behind_plans, months_ahead) -> CustomerProjection:
+        """Project what happens if behind customer continues current behavior"""
+        
+        total_months_behind = sum(months for _, months in behind_plans)
+        total_monthly = sum(plan.monthly_amount for plan in all_plans)
+        total_owed = sum(plan.total_open for plan in all_plans)
+        
+        # For behind customers in current scenario, show minimal projections
+        # They need to be contacted for renegotiation
         timeline = []
-        total_monthly = sum(plan.monthly_amount for plan in valid_plans)
-        total_owed = sum(plan.total_open for plan in valid_plans)
-        max_completion_month = 0
         
         for month in range(1, months_ahead + 1):
-            month_date = datetime.now() + relativedelta(months=month)
-            month_date = month_date.replace(day=calendar.monthrange(month_date.year, month_date.month)[1])
+            month_date = self._get_payment_date_for_month(month)
+            
+            # Behind customers likely won't make regular payments
+            # Show only plans that are current
+            monthly_payment = 0
+            active_plans = 0
+            plan_details = []
+            
+            # Only include plans that aren't behind
+            current_plans = [plan for plan in all_plans if (plan, 0) not in behind_plans]
+            
+            for plan in current_plans:
+                payment_info = self._calculate_plan_payment_for_month(plan, month, 'current')
+                if payment_info and payment_info['payment_amount'] > 0:
+                    monthly_payment += payment_info['payment_amount']
+                    active_plans += 1
+                    plan_details.append(payment_info)
+            
+            timeline.append({
+                'month': month,
+                'date': month_date.isoformat(),
+                'monthly_payment': round(monthly_payment, 2),
+                'active_plans': active_plans,
+                'plan_details': plan_details,
+                'note': 'Behind customer - contact needed' if total_months_behind > 0 else ''
+            })
+        
+        return CustomerProjection(
+            customer_name=customer.customer_name,
+            total_monthly_payment=total_monthly,
+            total_owed=total_owed,
+            completion_month=0,  # Unknown until renegotiation
+            plan_count=len(all_plans),
+            timeline=timeline,
+            status='behind' if total_months_behind > 0 else 'current',
+            months_behind=total_months_behind,
+            renegotiation_needed=total_months_behind > 0
+        )
+    
+    def _project_customer_restart(self, customer, all_plans, months_ahead) -> CustomerProjection:
+        """Project what happens if customer restarts payment plan today"""
+        
+        total_monthly = sum(plan.monthly_amount for plan in all_plans)
+        total_owed = sum(plan.total_open for plan in all_plans)
+        
+        # Calculate completion assuming they start fresh today
+        if total_monthly > 0:
+            # Find the plan that takes longest to complete
+            max_completion_month = 0
+            for plan in all_plans:
+                plan_completion = self._get_plan_completion_month_restart(plan)
+                max_completion_month = max(max_completion_month, plan_completion)
+            
+            completion_month = min(max_completion_month, months_ahead)
+        else:
+            completion_month = months_ahead
+        
+        # Generate timeline assuming fresh start
+        timeline = []
+        for month in range(1, months_ahead + 1):
+            month_date = self._get_payment_date_for_month(month)
+            
+            monthly_payment = 0
+            active_plans = 0
+            plan_details = []
+            
+            for plan in all_plans:
+                payment_info = self._calculate_plan_payment_for_month(plan, month, 'restart')
+                if payment_info and payment_info['payment_amount'] > 0:
+                    monthly_payment += payment_info['payment_amount']
+                    active_plans += 1
+                    plan_details.append(payment_info)
+            
+            timeline.append({
+                'month': month,
+                'date': month_date.isoformat(),
+                'monthly_payment': round(monthly_payment, 2),
+                'active_plans': active_plans,
+                'plan_details': plan_details,
+                'note': 'Restart scenario' if month == 1 else ''
+            })
+        
+        return CustomerProjection(
+            customer_name=customer.customer_name,
+            total_monthly_payment=total_monthly,
+            total_owed=total_owed,
+            completion_month=completion_month,
+            plan_count=len(all_plans),
+            timeline=timeline,
+            status='restart',
+            months_behind=0,  # Reset to 0 in restart scenario
+            renegotiation_needed=False
+        )
+    
+    def _project_customer_renegotiate(self, customer, all_plans, behind_plans, months_ahead) -> CustomerProjection:
+        """Project what happens with renegotiated payment terms"""
+        
+        # For renegotiation scenario, suggest extended terms or reduced payments
+        total_owed = sum(plan.total_open for plan in all_plans)
+        
+        # Suggest payment plan that completes in reasonable time (24-36 months)
+        suggested_monthly = total_owed / 30  # 30-month plan
+        
+        timeline = []
+        remaining_balance = total_owed
+        
+        for month in range(1, months_ahead + 1):
+            month_date = self._get_payment_date_for_month(month)
+            
+            if remaining_balance > 0:
+                payment_amount = min(suggested_monthly, remaining_balance)
+                remaining_balance -= payment_amount
+                
+                timeline.append({
+                    'month': month,
+                    'date': month_date.isoformat(),
+                    'monthly_payment': round(payment_amount, 2),
+                    'active_plans': len(all_plans),
+                    'plan_details': [{
+                        'plan_id': 'renegotiated_plan',
+                        'payment_amount': round(payment_amount, 2),
+                        'payment_number': month,
+                        'total_payments': math.ceil(total_owed / suggested_monthly),
+                        'frequency': 'monthly',
+                        'is_final_payment': remaining_balance <= 0
+                    }],
+                    'note': 'Proposed renegotiated terms'
+                })
+            else:
+                timeline.append({
+                    'month': month,
+                    'date': month_date.isoformat(),
+                    'monthly_payment': 0,
+                    'active_plans': 0,
+                    'plan_details': [],
+                    'note': 'Plan completed'
+                })
+        
+        completion_month = math.ceil(total_owed / suggested_monthly) if suggested_monthly > 0 else 0
+        
+        return CustomerProjection(
+            customer_name=customer.customer_name,
+            total_monthly_payment=suggested_monthly,
+            total_owed=total_owed,
+            completion_month=min(completion_month, months_ahead),
+            plan_count=len(all_plans),
+            timeline=timeline,
+            status='renegotiate',
+            months_behind=sum(months for _, months in behind_plans),
+            renegotiation_needed=True
+        )
+    
+    def _project_current_customer(self, customer, valid_plans, months_ahead) -> CustomerProjection:
+        """Project current customer - normal handling"""
+        
+        total_monthly = sum(plan.monthly_amount for plan in valid_plans)
+        total_owed = sum(plan.total_open for plan in valid_plans)
+        
+        # Calculate completion
+        max_completion_month = 0
+        for plan in valid_plans:
+            plan_completion = self._get_plan_completion_month(plan)
+            max_completion_month = max(max_completion_month, plan_completion)
+        
+        timeline = []
+        for month in range(1, months_ahead + 1):
+            month_date = self._get_payment_date_for_month(month)
             
             monthly_payment = 0
             active_plans = 0
             plan_details = []
             
             for plan in valid_plans:
-                payment_info = self._calculate_plan_payment_for_month(
-                    plan, month, scenario
-                )
-                
+                payment_info = self._calculate_plan_payment_for_month(plan, month, 'current')
                 if payment_info and payment_info['payment_amount'] > 0:
                     monthly_payment += payment_info['payment_amount']
                     active_plans += 1
                     plan_details.append(payment_info)
-                    
-                    # Track completion month
-                    completion_month = self._get_plan_completion_month(plan, scenario)
-                    max_completion_month = max(max_completion_month, completion_month)
             
             timeline.append({
                 'month': month,
@@ -124,41 +372,38 @@ class PaymentProjectionCalculator:
             customer_name=customer.customer_name,
             total_monthly_payment=total_monthly,
             total_owed=total_owed,
-            completion_month=max_completion_month,
+            completion_month=min(max_completion_month, months_ahead),
             plan_count=len(valid_plans),
-            timeline=timeline
+            timeline=timeline,
+            status='current',
+            months_behind=0,
+            renegotiation_needed=False
         )
     
+    def _get_payment_date_for_month(self, month_number: int) -> datetime:
+        """Get payment date for a given month (always 15th)"""
+        current_date = datetime.now()
+        target_date = current_date + relativedelta(months=month_number)
+        # Always use 15th of month
+        return target_date.replace(day=self.payment_day)
+    
     def _calculate_plan_payment_for_month(self, plan, month: int, scenario: str) -> Optional[Dict]:
-        """
-        FIXED: Calculate if a payment is due for a specific plan in a specific month
-        This is the core logic that was broken in JavaScript
-        """
+        """FIXED: Calculate payment for specific plan and month"""
         
-        # Get payment frequency in months
         frequency_months = self._get_frequency_months(plan.frequency.value)
         
-        # Calculate months behind (0 if restart scenario)
-        months_behind = 0 if scenario == 'restart' else getattr(plan, 'months_behind', 0)
-        
-        # FIXED LOGIC: Check if this month is a payment month
-        # For quarterly: payments should be in months 1, 4, 7, 10, 13...
-        # For monthly: payments should be in months 1, 2, 3, 4, 5...
-        # For bimonthly: payments should be in months 1, 3, 5, 7, 9...
-        
-        # Start payments from month 1, then every frequency_months
+        # Check if this month is a payment month
         is_payment_month = ((month - 1) % frequency_months) == 0
         
         if not is_payment_month:
             return None
         
-        # FIXED: Calculate which payment number this is (starting from 1)
+        # Calculate payment number
         payment_number = ((month - 1) // frequency_months) + 1
         
         # Calculate total payments needed
-        total_payments_needed = self._calculate_total_payments_needed(plan)
+        total_payments_needed = math.ceil(plan.total_open / plan.monthly_amount)
         
-        # Check if we've completed all payments
         if payment_number > total_payments_needed:
             return None
         
@@ -172,7 +417,7 @@ class PaymentProjectionCalculator:
             remaining = max(0, plan.total_open - previous_payments)
             payment_amount = min(payment_amount, remaining)
         
-        # Calculate remaining balance after this payment
+        # Calculate remaining balance
         total_paid_after = payment_number * plan.monthly_amount
         remaining_balance = max(0, plan.total_open - total_paid_after)
         
@@ -192,35 +437,42 @@ class PaymentProjectionCalculator:
     
     def _get_frequency_months(self, frequency: str) -> int:
         """Get payment frequency in months"""
-        frequency_lower = frequency.lower()
-        return self.frequency_months.get(frequency_lower, 1)
+        return self.frequency_months.get(frequency.lower(), 1)
     
-    def _calculate_total_payments_needed(self, plan) -> int:
-        """Calculate total number of payments needed to pay off the plan"""
+    def _get_plan_completion_month(self, plan) -> int:
+        """Calculate completion month for current plan"""
         if plan.monthly_amount <= 0:
             return 0
-        return max(1, int(plan.total_open / plan.monthly_amount) + (1 if plan.total_open % plan.monthly_amount > 0 else 0))
-    
-    def _get_plan_completion_month(self, plan, scenario: str) -> int:
-        """Calculate which month the plan will be completed"""
+        
         frequency_months = self._get_frequency_months(plan.frequency.value)
-        total_payments = self._calculate_total_payments_needed(plan)
+        total_payments = math.ceil(plan.total_open / plan.monthly_amount)
         
-        # Calculate completion month: (last_payment_number - 1) * frequency + 1
-        completion_month = ((total_payments - 1) * frequency_months) + 1
-        
-        return completion_month
+        return ((total_payments - 1) * frequency_months) + 1
+    
+    def _get_plan_completion_month_restart(self, plan) -> int:
+        """Calculate completion month if plan restarts today"""
+        return self._get_plan_completion_month(plan)  # Same calculation
     
     def generate_portfolio_summary(self, projections: List[CustomerProjection], months_ahead: int = 12) -> Dict:
-        """Generate portfolio-wide payment projections summary"""
+        """Generate portfolio summary with behind customer analysis"""
+        
+        if not projections:
+            return self._empty_portfolio_summary()
         
         monthly_summaries = []
         total_expected = 0
+        
+        # Categorize customers
+        current_customers = [p for p in projections if p.status == 'current']
+        behind_customers = [p for p in projections if p.status == 'behind']
+        restart_customers = [p for p in projections if p.status == 'restart']
+        renegotiation_customers = [p for p in projections if p.status == 'renegotiate']
         
         for month in range(1, months_ahead + 1):
             month_total = 0
             active_customers = 0
             completing_customers = 0
+            behind_count = 0
             
             for projection in projections:
                 if month <= len(projection.timeline):
@@ -230,8 +482,11 @@ class PaymentProjectionCalculator:
                     if month_data['monthly_payment'] > 0:
                         active_customers += 1
                     
+                    if projection.status == 'behind':
+                        behind_count += 1
+                    
                     # Check if any plan completes this month
-                    for detail in month_data['plan_details']:
+                    for detail in month_data.get('plan_details', []):
                         if detail.get('is_final_payment', False):
                             completing_customers += 1
             
@@ -245,6 +500,7 @@ class PaymentProjectionCalculator:
                 'expected_payment': round(month_total, 2),
                 'active_customers': active_customers,
                 'completing_customers': completing_customers,
+                'behind_customers': behind_count,
                 'cumulative_total': round(total_expected, 2)
             })
         
@@ -252,91 +508,51 @@ class PaymentProjectionCalculator:
             'monthly_projections': monthly_summaries,
             'summary': {
                 'total_customers': len(projections),
+                'current_customers': len(current_customers),
+                'behind_customers': len(behind_customers),
+                'customers_needing_renegotiation': len(renegotiation_customers),
                 'total_expected_collection': round(total_expected, 2),
                 'average_monthly': round(total_expected / months_ahead, 2) if months_ahead > 0 else 0,
-                'customers_with_payments': len([p for p in projections if any(m['monthly_payment'] > 0 for m in p.timeline)])
+                'customers_with_payments': len([p for p in projections if any(m['monthly_payment'] > 0 for m in p.timeline)]),
+                'total_months_behind': sum(p.months_behind for p in behind_customers),
+                'potential_recovery_amount': sum(p.total_owed for p in behind_customers)
+            },
+            'customer_categories': {
+                'current': len(current_customers),
+                'behind': len(behind_customers),
+                'restart_scenario': len(restart_customers),
+                'renegotiation_needed': len(renegotiation_customers)
             }
         }
     
-    def get_customer_details(self, customer_name: str, projections: List[CustomerProjection]) -> Optional[Dict]:
-        """Get detailed projection for a specific customer"""
-        
-        customer_projection = next((p for p in projections if p.customer_name == customer_name), None)
-        
-        if not customer_projection:
-            return None
-        
+    def _empty_portfolio_summary(self) -> Dict:
+        """Return empty portfolio summary"""
         return {
-            'customer_name': customer_projection.customer_name,
-            'total_monthly_payment': customer_projection.total_monthly_payment,
-            'total_owed': customer_projection.total_owed,
-            'completion_month': customer_projection.completion_month,
-            'plan_count': customer_projection.plan_count,
-            'timeline': customer_projection.timeline,
-            'payment_months': [i + 1 for i, month in enumerate(customer_projection.timeline) if month['monthly_payment'] > 0],
-            'total_projected': sum(month['monthly_payment'] for month in customer_projection.timeline)
+            'monthly_projections': [],
+            'summary': {
+                'total_customers': 0,
+                'total_expected_collection': 0,
+                'average_monthly': 0,
+                'customers_with_payments': 0
+            }
         }
-
-
-# Example usage function for testing
-def test_projections():
-    """Test function to verify projections work correctly"""
     
-    # This would normally come from your enhanced_main.py results
-    # Creating mock data that matches your models structure
-    
-    from models import Customer, PaymentPlan, PaymentFrequency
-    
-    # Mock customers for testing
-    test_customers = {
-        'NFN KASHIF': Customer(
-            customer_name='NFN KASHIF',
-            payment_plans=[PaymentPlan(
-                customer_name='NFN KASHIF',
-                plan_id='NFN_KASHIF_plan_1',
-                monthly_amount=500,
-                frequency=PaymentFrequency.MONTHLY,
-                total_original=4500,
-                total_open=4500,
-                invoices=[],
-                earliest_date=datetime.now(),
-                latest_date=datetime.now(),
-                has_issues=False
-            )]
-        ),
-        'Amirjon Tursunov': Customer(
-            customer_name='Amirjon Tursunov',
-            payment_plans=[PaymentPlan(
-                customer_name='Amirjon Tursunov',
-                plan_id='Amirjon_plan_1',
-                monthly_amount=1000,
-                frequency=PaymentFrequency.QUARTERLY,
-                total_original=4000,
-                total_open=4000,
-                invoices=[],
-                earliest_date=datetime.now(),
-                latest_date=datetime.now(),
-                has_issues=False
-            )]
-        )
-    }
-    
-    # Test the calculator
-    calculator = PaymentProjectionCalculator()
-    projections = calculator.calculate_customer_projections(test_customers, 12)
-    
-    print("Test Results:")
-    for projection in projections:
-        print(f"\n{projection.customer_name}:")
-        payment_months = [i + 1 for i, month in enumerate(projection.timeline) if month['monthly_payment'] > 0]
-        print(f"  Payment months: {payment_months[:6]}...")
+    def get_renegotiation_candidates(self, projections: List[CustomerProjection]) -> List[Dict]:
+        """Get list of customers who need renegotiation"""
+        candidates = []
         
-        for i, month in enumerate(projection.timeline[:6]):
-            if month['monthly_payment'] > 0:
-                details = month['plan_details'][0] if month['plan_details'] else {}
-                payment_num = details.get('payment_number', 'N/A')
-                total_payments = details.get('total_payments', 'N/A')
-                print(f"  Month {month['month']}: ${month['monthly_payment']} (Payment {payment_num}/{total_payments})")
-
-if __name__ == "__main__":
-    test_projections()
+        for projection in projections:
+            if projection.renegotiation_needed:
+                candidates.append({
+                    'customer_name': projection.customer_name,
+                    'months_behind': projection.months_behind,
+                    'total_owed': projection.total_owed,
+                    'current_monthly': projection.total_monthly_payment,
+                    'suggested_monthly': projection.total_owed / 30,  # 30-month plan
+                    'priority': 'high' if projection.months_behind > 6 else 
+                              'medium' if projection.months_behind > 3 else 'low'
+                })
+        
+        # Sort by months behind (most behind first)
+        candidates.sort(key=lambda x: -x['months_behind'])
+        return candidates

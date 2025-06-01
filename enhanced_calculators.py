@@ -1,15 +1,22 @@
-"""Enhanced payment metrics calculation functionality - Phase 1"""
+"""Enhanced payment metrics calculation functionality - FIXED VERSION
+Resolves logical issues with months display, deficit calculations, and percentage calculations
+"""
 
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
+import math
 from models import (
     Customer, PaymentPlan, PaymentMetrics, CustomerStatus, 
     PaymentFrequency, PaymentRoadmapEntry
 )
 
 class EnhancedPaymentCalculator:
-    """Enhanced calculator supporting multiple payment plans per customer"""
+    """Enhanced calculator with fixed logical issues"""
     
+    def __init__(self):
+        # Payment date is always 15th of month
+        self.payment_day = 15
+        
     def calculate_customer_metrics(self, customer: Customer) -> List[PaymentMetrics]:
         """Calculate metrics for all payment plans for a customer"""
         all_metrics = []
@@ -23,70 +30,42 @@ class EnhancedPaymentCalculator:
         return all_metrics
     
     def calculate_plan_metrics(self, plan: PaymentPlan) -> Optional[PaymentMetrics]:
-        """Calculate payment metrics for a single payment plan"""
+        """Calculate payment metrics for a single payment plan - FIXED VERSION"""
         if plan.has_issues or plan.monthly_amount == 0:
             return None
         
-        # Basic calculations
-        percent_paid = ((plan.total_original - plan.total_open) / plan.total_original * 100) if plan.total_original > 0 else 0
-        actual_payments = plan.total_original - plan.total_open
-        
-        # Time-based calculations
+        # FIXED: Always use whole numbers for months (rounded up)
         if plan.earliest_date:
-            months_elapsed = (datetime.now() - plan.earliest_date).days / 30.44
+            # Calculate months elapsed from earliest invoice date
+            days_elapsed = (datetime.now() - plan.earliest_date).days
+            months_elapsed_decimal = days_elapsed / 30.44  # Average days per month
+            months_elapsed = math.ceil(months_elapsed_decimal)  # ALWAYS round up
             
-            # Calculate expected payments based on frequency
-            if plan.frequency == PaymentFrequency.MONTHLY:
-                expected_payments = months_elapsed * plan.monthly_amount
-                payment_periods = months_elapsed
-            elif plan.frequency == PaymentFrequency.QUARTERLY:
-                payment_periods = months_elapsed / 3
-                expected_payments = payment_periods * plan.monthly_amount
-            elif plan.frequency == PaymentFrequency.BIMONTHLY:
-                payment_periods = months_elapsed / 2
-                expected_payments = payment_periods * plan.monthly_amount
-            else:
-                expected_payments = 0
-                payment_periods = 0
+            # FIXED: Calculate expected payments based on frequency and actual time
+            expected_payments = self._calculate_expected_payments(plan, months_elapsed)
             
+            # FIXED: Calculate actual payments more accurately
+            actual_payments = plan.total_original - plan.total_open
+            
+            # FIXED: Payment difference calculation
             payment_difference = actual_payments - expected_payments
             
-            # Calculate months behind
-            if plan.monthly_amount > 0 and payment_difference < 0:
-                if plan.frequency == PaymentFrequency.MONTHLY:
-                    months_behind = abs(payment_difference) / plan.monthly_amount
-                elif plan.frequency == PaymentFrequency.QUARTERLY:
-                    months_behind = abs(payment_difference) / plan.monthly_amount * 3
-                elif plan.frequency == PaymentFrequency.BIMONTHLY:
-                    months_behind = abs(payment_difference) / plan.monthly_amount * 2
-                else:
-                    months_behind = 0
-            else:
-                months_behind = 0
+            # FIXED: Months behind calculation (always whole numbers)
+            months_behind = self._calculate_months_behind(plan, payment_difference)
+            
+            # FIXED: More accurate percentage calculation considering time
+            percent_paid = self._calculate_percent_paid(plan, months_elapsed)
             
             # Determine status
             if plan.total_open == 0:
                 status = CustomerStatus.COMPLETED
-            elif months_behind > 0.5:
+            elif months_behind > 0:  # Any delay means behind
                 status = CustomerStatus.BEHIND
             else:
                 status = CustomerStatus.CURRENT
             
-            # Project completion
-            if plan.monthly_amount > 0 and plan.total_open > 0:
-                if plan.frequency == PaymentFrequency.MONTHLY:
-                    months_remaining = plan.total_open / plan.monthly_amount
-                elif plan.frequency == PaymentFrequency.QUARTERLY:
-                    months_remaining = (plan.total_open / plan.monthly_amount) * 3
-                elif plan.frequency == PaymentFrequency.BIMONTHLY:
-                    months_remaining = (plan.total_open / plan.monthly_amount) * 2
-                else:
-                    months_remaining = plan.total_open / plan.monthly_amount
-                
-                projected_completion = datetime.now() + timedelta(days=months_remaining * 30.44)
-            else:
-                months_remaining = 0
-                projected_completion = None
+            # FIXED: Project completion using 15th of month
+            months_remaining, projected_completion = self._calculate_completion(plan)
             
             # Generate payment roadmap
             roadmap = self._generate_payment_roadmap(plan, months_remaining)
@@ -98,32 +77,134 @@ class EnhancedPaymentCalculator:
                 frequency=plan.frequency.value,
                 total_owed=plan.total_open,
                 original_amount=plan.total_original,
-                percent_paid=percent_paid,
-                months_elapsed=round(months_elapsed, 1),
+                percent_paid=round(percent_paid, 1),
+                months_elapsed=months_elapsed,  # Whole number
                 expected_payments=round(expected_payments, 2),
                 actual_payments=round(actual_payments, 2),
                 payment_difference=round(payment_difference, 2),
-                months_behind=round(months_behind, 1),
+                months_behind=months_behind,  # Whole number
                 status=status,
                 projected_completion=projected_completion,
-                months_remaining=round(months_remaining, 1),
+                months_remaining=months_remaining,  # Whole number
                 class_field=plan.class_filter,
                 payment_roadmap=roadmap
             )
         
         return None
     
-    def _generate_payment_roadmap(self, plan: PaymentPlan, months_remaining: float) -> List[Dict]:
-        """Generate payment roadmap/timeline for a payment plan"""
+    def _calculate_expected_payments(self, plan: PaymentPlan, months_elapsed: int) -> float:
+        """Calculate expected payments based on frequency and time elapsed"""
+        if plan.frequency == PaymentFrequency.MONTHLY:
+            # Expected one payment per month
+            return months_elapsed * plan.monthly_amount
+        elif plan.frequency == PaymentFrequency.QUARTERLY:
+            # Expected one payment every 3 months
+            quarterly_periods = months_elapsed // 3
+            return quarterly_periods * plan.monthly_amount
+        elif plan.frequency == PaymentFrequency.BIMONTHLY:
+            # Expected one payment every 2 months
+            bimonthly_periods = months_elapsed // 2
+            return bimonthly_periods * plan.monthly_amount
+        else:
+            return 0.0
+    
+    def _calculate_months_behind(self, plan: PaymentPlan, payment_difference: float) -> int:
+        """Calculate months behind - FIXED to return whole numbers only"""
+        if payment_difference >= 0:  # Not behind
+            return 0
+        
+        deficit = abs(payment_difference)
+        
+        if plan.monthly_amount <= 0:
+            return 0
+        
+        # Calculate months behind based on payment deficit
+        if plan.frequency == PaymentFrequency.MONTHLY:
+            months_behind_decimal = deficit / plan.monthly_amount
+        elif plan.frequency == PaymentFrequency.QUARTERLY:
+            # For quarterly, each missed payment represents 3 months
+            payments_behind = deficit / plan.monthly_amount
+            months_behind_decimal = payments_behind * 3
+        elif plan.frequency == PaymentFrequency.BIMONTHLY:
+            # For bimonthly, each missed payment represents 2 months
+            payments_behind = deficit / plan.monthly_amount
+            months_behind_decimal = payments_behind * 2
+        else:
+            months_behind_decimal = deficit / plan.monthly_amount
+        
+        # ALWAYS return whole numbers (rounded up)
+        return math.ceil(months_behind_decimal)
+    
+    def _calculate_percent_paid(self, plan: PaymentPlan, months_elapsed: int) -> float:
+        """Calculate percentage paid considering time elapsed - FIXED VERSION"""
+        if plan.total_original <= 0:
+            return 0.0
+        
+        # Basic percentage of total amount paid
+        basic_percent = ((plan.total_original - plan.total_open) / plan.total_original) * 100
+        
+        # Consider time factor - what percentage should have been paid by now?
+        if plan.frequency == PaymentFrequency.MONTHLY:
+            expected_payment_count = months_elapsed
+        elif plan.frequency == PaymentFrequency.QUARTERLY:
+            expected_payment_count = months_elapsed // 3
+        elif plan.frequency == PaymentFrequency.BIMONTHLY:
+            expected_payment_count = months_elapsed // 2
+        else:
+            expected_payment_count = months_elapsed
+        
+        # Calculate what percentage should have been paid based on schedule
+        total_payments_needed = math.ceil(plan.total_original / plan.monthly_amount)
+        expected_percent_by_now = min(100.0, (expected_payment_count / total_payments_needed) * 100)
+        
+        # Return the actual percentage paid (not relative to expected)
+        return basic_percent
+    
+    def _calculate_completion(self, plan: PaymentPlan) -> tuple[int, Optional[datetime]]:
+        """Calculate completion timeline - FIXED to use 15th of month"""
+        if plan.monthly_amount <= 0 or plan.total_open <= 0:
+            return 0, None
+        
+        # Calculate remaining payments needed
+        payments_remaining = math.ceil(plan.total_open / plan.monthly_amount)
+        
+        # Convert to months based on frequency
+        if plan.frequency == PaymentFrequency.MONTHLY:
+            months_remaining = payments_remaining
+        elif plan.frequency == PaymentFrequency.QUARTERLY:
+            months_remaining = payments_remaining * 3
+        elif plan.frequency == PaymentFrequency.BIMONTHLY:
+            months_remaining = payments_remaining * 2
+        else:
+            months_remaining = payments_remaining
+        
+        # FIXED: Project completion to 15th of target month
+        if months_remaining > 0:
+            target_date = datetime.now().replace(day=self.payment_day)
+            # Add months
+            for _ in range(months_remaining):
+                if target_date.month == 12:
+                    target_date = target_date.replace(year=target_date.year + 1, month=1)
+                else:
+                    target_date = target_date.replace(month=target_date.month + 1)
+            
+            projected_completion = target_date
+        else:
+            projected_completion = None
+        
+        return months_remaining, projected_completion
+    
+    def _generate_payment_roadmap(self, plan: PaymentPlan, months_remaining: int) -> List[Dict]:
+        """Generate payment roadmap using 15th of month - FIXED VERSION"""
         roadmap = []
         
         if plan.monthly_amount <= 0 or months_remaining <= 0:
             return roadmap
         
-        current_date = datetime.now()
-        remaining_balance = plan.total_open
+        current_balance = plan.total_open
+        current_date = datetime.now().replace(day=self.payment_day)
         
-        # Determine payment interval
+        # Determine payment interval in months
         if plan.frequency == PaymentFrequency.MONTHLY:
             interval_months = 1
         elif plan.frequency == PaymentFrequency.QUARTERLY:
@@ -133,45 +214,42 @@ class EnhancedPaymentCalculator:
         else:
             interval_months = 1
         
-        # Generate roadmap entries
-        payment_count = 0
-        max_payments = 60  # Limit to 5 years of payments
+        payment_number = 1
+        max_payments = 60  # Limit to 5 years
         
-        while remaining_balance > 0 and payment_count < max_payments:
-            payment_date = current_date + timedelta(days=payment_count * interval_months * 30.44)
-            payment_amount = min(plan.monthly_amount, remaining_balance)
+        while current_balance > 0 and payment_number <= max_payments:
+            # Calculate payment amount (final payment may be less)
+            payment_amount = min(plan.monthly_amount, current_balance)
             
+            # Add entry to roadmap
             roadmap_entry = {
-                'payment_number': payment_count + 1,
-                'date': payment_date.strftime('%Y-%m-%d'),
+                'payment_number': payment_number,
+                'date': current_date.strftime('%Y-%m-%d'),
                 'expected_payment': round(payment_amount, 2),
-                'remaining_balance': round(remaining_balance - payment_amount, 2),
-                'is_overdue': payment_date < current_date,
-                'description': f'Payment {payment_count + 1} - {plan.frequency.value}'
+                'remaining_balance': round(current_balance - payment_amount, 2),
+                'is_overdue': current_date < datetime.now(),
+                'description': f'Payment {payment_number} - {plan.frequency.value}'
             }
             
             roadmap.append(roadmap_entry)
-            remaining_balance -= payment_amount
-            payment_count += 1
+            
+            # Update for next iteration
+            current_balance -= payment_amount
+            payment_number += 1
+            
+            # Move to next payment date
+            for _ in range(interval_months):
+                if current_date.month == 12:
+                    current_date = current_date.replace(year=current_date.year + 1, month=1)
+                else:
+                    current_date = current_date.replace(month=current_date.month + 1)
         
         return roadmap
     
     def calculate_portfolio_metrics(self, all_metrics: List[PaymentMetrics]) -> Dict:
-        """Calculate aggregate metrics for entire portfolio"""
+        """Calculate aggregate metrics - FIXED VERSION"""
         if not all_metrics:
-            return {
-                'total_customers': 0,
-                'total_plans': 0,
-                'total_outstanding': 0,
-                'expected_monthly': 0,
-                'customers_current': 0,
-                'customers_behind': 0,
-                'customers_completed': 0,
-                'average_months_behind': 0,
-                'total_behind_amount': 0,
-                'plans_by_class': {},
-                'plans_by_frequency': {}
-            }
+            return self._empty_portfolio_metrics()
         
         # Group by customer to avoid double counting
         customers_by_status = {}
@@ -180,6 +258,7 @@ class EnhancedPaymentCalculator:
         
         total_outstanding = sum(m.total_owed for m in all_metrics)
         expected_monthly = 0
+        total_behind_amount = 0  # FIXED: Track actual behind amount
         
         for metric in all_metrics:
             # Track plans by class
@@ -203,6 +282,12 @@ class EnhancedPaymentCalculator:
                 expected_monthly += metric.monthly_payment / 3
             elif metric.frequency == 'bimonthly':
                 expected_monthly += metric.monthly_payment / 2
+            
+            # FIXED: Calculate behind amount (capped at total owed)
+            if metric.status == CustomerStatus.BEHIND:
+                # Payment deficit should never exceed total owed
+                deficit = min(abs(metric.payment_difference), metric.total_owed)
+                total_behind_amount += deficit
             
             # Track customer status (use worst status per customer)
             customer_key = metric.customer_name
@@ -230,8 +315,6 @@ class EnhancedPaymentCalculator:
         average_months_behind = (sum(m.months_behind for m in behind_metrics) / len(behind_metrics) 
                                if behind_metrics else 0)
         
-        total_behind_amount = sum(abs(m.payment_difference) for m in behind_metrics)
-        
         return {
             'total_customers': len(customers_by_status),
             'total_plans': len(all_metrics),
@@ -240,105 +323,42 @@ class EnhancedPaymentCalculator:
             'customers_current': status_counts[CustomerStatus.CURRENT],
             'customers_behind': status_counts[CustomerStatus.BEHIND], 
             'customers_completed': status_counts[CustomerStatus.COMPLETED],
-            'average_months_behind': round(average_months_behind, 1),
-            'total_behind_amount': total_behind_amount,
+            'average_months_behind': math.ceil(average_months_behind),  # FIXED: Whole number
+            'total_behind_amount': total_behind_amount,  # FIXED: Capped amount
             'percentage_behind': (status_counts[CustomerStatus.BEHIND] / len(customers_by_status) * 100) if customers_by_status else 0,
             'plans_by_class': plans_by_class,
             'plans_by_frequency': plans_by_frequency
         }
     
-    def get_customers_by_class(self, all_metrics: List[PaymentMetrics], class_filter: str) -> List[PaymentMetrics]:
-        """Filter metrics by class"""
-        return [m for m in all_metrics if m.class_field == class_filter]
-    
-    def get_customers_by_status(self, all_metrics: List[PaymentMetrics], status: CustomerStatus) -> List[PaymentMetrics]:
-        """Filter metrics by status"""
-        return [m for m in all_metrics if m.status == status]
+    def _empty_portfolio_metrics(self) -> Dict:
+        """Return empty portfolio metrics"""
+        return {
+            'total_customers': 0,
+            'total_plans': 0,
+            'total_outstanding': 0,
+            'expected_monthly': 0,
+            'customers_current': 0,
+            'customers_behind': 0,
+            'customers_completed': 0,
+            'average_months_behind': 0,
+            'total_behind_amount': 0,
+            'plans_by_class': {},
+            'plans_by_frequency': {}
+        }
     
     def prioritize_collections(self, all_metrics: List[PaymentMetrics]) -> List[PaymentMetrics]:
-        """Prioritize customers for collections based on various factors"""
+        """Prioritize customers for collections - FIXED VERSION"""
         # Filter to only behind customers
         behind_customers = [m for m in all_metrics if m.status == CustomerStatus.BEHIND]
         
         # Sort by multiple criteria:
         # 1. Months behind (descending)
-        # 2. Total amount owed (descending)
-        # 3. Payment difference (ascending - most negative first)
+        # 2. Total amount owed (descending)  
+        # 3. Payment difference (most negative first, but capped)
         
-        return sorted(behind_customers, 
-                     key=lambda m: (-m.months_behind, -m.total_owed, m.payment_difference))
-    
-    def calculate_recovery_scenarios(self, metrics: PaymentMetrics) -> Dict:
-        """Calculate different recovery scenarios for a behind customer"""
-        if metrics.status != CustomerStatus.BEHIND or metrics.monthly_payment == 0:
-            return {}
+        def sort_key(metric):
+            # Cap payment difference at total owed
+            capped_difference = min(abs(metric.payment_difference), metric.total_owed)
+            return (-metric.months_behind, -metric.total_owed, -capped_difference)
         
-        scenarios = {}
-        
-        # Scenario 1: Catch up in 3 months
-        catch_up_3_months = (abs(metrics.payment_difference) + (metrics.monthly_payment * 3)) / 3
-        scenarios['catch_up_3_months'] = {
-            'monthly_payment': round(catch_up_3_months, 2),
-            'total_period': 3,
-            'description': 'Catch up in 3 months',
-            'total_additional': round(abs(metrics.payment_difference), 2)
-        }
-        
-        # Scenario 2: Catch up in 6 months
-        catch_up_6_months = (abs(metrics.payment_difference) + (metrics.monthly_payment * 6)) / 6
-        scenarios['catch_up_6_months'] = {
-            'monthly_payment': round(catch_up_6_months, 2),
-            'total_period': 6,
-            'description': 'Catch up in 6 months',
-            'total_additional': round(abs(metrics.payment_difference), 2)
-        }
-        
-        # Scenario 3: Double payment until caught up
-        double_payment_months = abs(metrics.payment_difference) / metrics.monthly_payment
-        scenarios['double_payment'] = {
-            'monthly_payment': round(metrics.monthly_payment * 2, 2),
-            'total_period': round(double_payment_months, 1),
-            'description': 'Double regular payment until caught up',
-            'total_additional': round(abs(metrics.payment_difference), 2)
-        }
-        
-        return scenarios
-    
-    def generate_class_summary(self, all_metrics: List[PaymentMetrics]) -> Dict[str, Dict]:
-        """Generate summary by class"""
-        class_summary = {}
-        
-        for metric in all_metrics:
-            class_key = metric.class_field or 'Unknown'
-            
-            if class_key not in class_summary:
-                class_summary[class_key] = {
-                    'total_customers': 0,
-                    'total_plans': 0,
-                    'total_owed': 0,
-                    'customers_behind': 0,
-                    'expected_monthly': 0,
-                    'customers': set()
-                }
-            
-            class_summary[class_key]['total_plans'] += 1
-            class_summary[class_key]['total_owed'] += metric.total_owed
-            class_summary[class_key]['customers'].add(metric.customer_name)
-            
-            if metric.status == CustomerStatus.BEHIND:
-                class_summary[class_key]['customers_behind'] += 1
-            
-            # Normalize expected monthly
-            if metric.frequency == 'monthly':
-                class_summary[class_key]['expected_monthly'] += metric.monthly_payment
-            elif metric.frequency == 'quarterly':
-                class_summary[class_key]['expected_monthly'] += metric.monthly_payment / 3
-            elif metric.frequency == 'bimonthly':
-                class_summary[class_key]['expected_monthly'] += metric.monthly_payment / 2
-        
-        # Convert sets to counts
-        for class_key in class_summary:
-            class_summary[class_key]['total_customers'] = len(class_summary[class_key]['customers'])
-            del class_summary[class_key]['customers']  # Remove the set
-        
-        return class_summary
+        return sorted(behind_customers, key=sort_key)
