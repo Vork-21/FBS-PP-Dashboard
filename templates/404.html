@@ -1,0 +1,70 @@
+<!-- 404.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6 text-center">
+        <div class="card">
+            <div class="card-body p-5">
+                <div class="mb-4">
+                    <i class="fas fa-search fa-5x text-muted"></i>
+                </div>
+                <h1 class="display-4 text-primary">404</h1>
+                <h3 class="mb-3">Page Not Found</h3>
+                <p class="lead text-muted mb-4">
+                    Oops! The page you're looking for doesn't exist. 
+                    It might have been moved, deleted, or you entered the wrong URL.
+                </p>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                    <a href="/" class="btn btn-primary btn-lg">
+                        <i class="fas fa-home me-2"></i>Go Home
+                    </a>
+                    <button class="btn btn-outline-secondary btn-lg" onclick="history.back()">
+                        <i class="fas fa-arrow-left me-2"></i>Go Back
+                    </button>
+                </div>
+                
+                <hr class="my-4">
+                
+                <div class="row">
+                    <div class="col-md-4">
+                        <a href="/dashboard" class="text-decoration-none">
+                            <div class="p-3 border rounded hover-shadow">
+                                <i class="fas fa-tachometer-alt fa-2x text-primary mb-2"></i>
+                                <h6>Dashboard</h6>
+                                <small class="text-muted">Main overview</small>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="/quality" class="text-decoration-none">
+                            <div class="p-3 border rounded hover-shadow">
+                                <i class="fas fa-search fa-2x text-success mb-2"></i>
+                                <h6>Data Quality</h6>
+                                <small class="text-muted">Error analysis</small>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="/customers" class="text-decoration-none">
+                            <div class="p-3 border rounded hover-shadow">
+                                <i class="fas fa-users fa-2x text-info mb-2"></i>
+                                <h6>Customers</h6>
+                                <small class="text-muted">Payment tracking</small>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.hover-shadow:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transition: box-shadow 0.3s ease;
+}
+</style>
+{% endblock %}

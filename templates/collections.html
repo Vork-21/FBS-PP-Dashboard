@@ -1,0 +1,443 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="fas fa-exclamation-triangle me-3"></i>Collection Priorities</h1>
+            <div class="d-flex gap-2">
+                <button class="btn btn-success" onclick="exportCollectionsList()">
+                    <i class="fas fa-file-excel me-2"></i>Export List
+                </button>
+                <button class="btn btn-outline-primary" onclick="refreshData()">
+                    <i class="fas fa-sync-alt me-2"></i>Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Collection Summary -->
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Collection Overview</h5>
+            </div>
+            <div class="card-body">
+                <div id="collectionOverview">
+                    <!-- Overview metrics will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filters</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Class Filter</label>
+                    <select class="form-select" id="classFilter" onchange="applyFilters()">
+                        <option value="all">All Classes</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Minimum Months Behind</label>
+                    <select class="form-select" id="monthsFilter" onchange="applyFilters()">
+                        <option value="0">All Behind Customers</option>
+                        <option value="1">1+ Months Behind</option>
+                        <option value="2">2+ Months Behind</option>
+                        <option value="3">3+ Months Behind</option>
+                        <option value="6">6+ Months Behind</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Minimum Balance</label>
+                    <select class="form-select" id="balanceFilter" onchange="applyFilters()">
+                        <option value="0">Any Amount</option>
+                        <option value="1000">$1,000+</option>
+                        <option value="5000">$5,000+</option>
+                        <option value="10000">$10,000+</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Priority List -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-list-ol me-2"></i>Priority Collection List</h5>
+                    <span class="badge bg-danger" id="totalBehindCount">Loading...</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Priority</th>
+                                <th>Customer</th>
+                                <th>Plan ID</th>
+                                <th>Class</th>
+                                <th>Months Behind</th>
+                                <th>Balance Owed</th>
+                                <th>Monthly Payment</th>
+                                <th>Payment Deficit</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="priorityTableBody">
+                            <!-- Priority list will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Pagination -->
+                <nav id="priorityPagination" class="mt-3">
+                    <!-- Pagination will be generated here -->
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Collection Tips -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Collection Tips</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="alert alert-danger p-3">
+                            <h6><i class="fas fa-exclamation-triangle me-2"></i>Critical (3+ months)</h6>
+                            <p class="small mb-0">Requires immediate attention. Consider phone contact and payment plan restructuring.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="alert alert-warning p-3">
+                            <h6><i class="fas fa-exclamation-circle me-2"></i>Warning (1-3 months)</h6>
+                            <p class="small mb-0">Send reminder notices and follow up. May need payment plan adjustment.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="alert alert-info p-3">
+                            <h6><i class="fas fa-info-circle me-2"></i>Recent (< 1 month)</h6>
+                            <p class="small mb-0">Send friendly reminder. Customer likely just missed one payment.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let allPriorities = [];
+    let filteredPriorities = [];
+    let currentPage = 1;
+    const itemsPerPage = 20;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadCollectionData();
+    });
+
+    async function loadCollectionData() {
+        try {
+            // Load from dashboard data and filter for behind customers
+            const response = await fetch('/api/results/dashboard');
+            const data = await response.json();
+            
+            // Extract customers who are behind
+            const planDetails = data.payment_plan_details || [];
+            allPriorities = planDetails
+                .filter(plan => (plan.months_behind || 0) > 0)
+                .sort((a, b) => {
+                    // Sort by months behind (desc), then by balance (desc)
+                    if (b.months_behind !== a.months_behind) {
+                        return b.months_behind - a.months_behind;
+                    }
+                    return (b.total_owed || 0) - (a.total_owed || 0);
+                });
+            
+            populateClassFilter();
+            applyFilters();
+            updateOverview();
+            
+        } catch (error) {
+            console.error('Error loading collection data:', error);
+            showToast('Error loading collection data', 'danger');
+        }
+    }
+
+    function populateClassFilter() {
+        const classFilter = document.getElementById('classFilter');
+        const classes = [...new Set(allPriorities.map(plan => plan.class_field).filter(Boolean))];
+        
+        classes.forEach(className => {
+            const option = document.createElement('option');
+            option.value = className;
+            option.textContent = className;
+            classFilter.appendChild(option);
+        });
+    }
+
+    function applyFilters() {
+        const classFilter = document.getElementById('classFilter').value;
+        const monthsFilter = parseFloat(document.getElementById('monthsFilter').value);
+        const balanceFilter = parseFloat(document.getElementById('balanceFilter').value);
+
+        filteredPriorities = allPriorities.filter(item => {
+            if (classFilter !== 'all' && item.class_field !== classFilter) return false;
+            if ((item.months_behind || 0) < monthsFilter) return false;
+            if ((item.total_owed || 0) < balanceFilter) return false;
+            return true;
+        });
+
+        currentPage = 1;
+        renderPriorityTable();
+        renderPagination();
+        updateTotalCount();
+    }
+
+    function updateOverview() {
+        const container = document.getElementById('collectionOverview');
+        
+        if (allPriorities.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle me-2"></i>
+                    Excellent! No customers are behind on payments.
+                </div>
+            `;
+            return;
+        }
+
+        const totalBehind = allPriorities.length;
+        const totalOwed = allPriorities.reduce((sum, item) => sum + (item.total_owed || 0), 0);
+        const totalDeficit = allPriorities.reduce((sum, item) => {
+            const deficit = (item.months_behind || 0) * (item.monthly_payment || 0);
+            return sum + deficit;
+        }, 0);
+        const avgMonthsBehind = allPriorities.reduce((sum, item) => sum + (item.months_behind || 0), 0) / totalBehind;
+
+        // Group by severity
+        const critical = allPriorities.filter(item => (item.months_behind || 0) >= 3).length;
+        const warning = allPriorities.filter(item => {
+            const months = item.months_behind || 0;
+            return months >= 1 && months < 3;
+        }).length;
+        const mild = allPriorities.filter(item => (item.months_behind || 0) < 1).length;
+
+        container.innerHTML = `
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <div class="text-center p-3 border rounded bg-light">
+                        <div class="h4 text-danger">${totalBehind}</div>
+                        <div class="text-muted">Customers Behind</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="text-center p-3 border rounded bg-light">
+                        <div class="h4 text-warning">${formatCurrency(totalOwed)}</div>
+                        <div class="text-muted">Total Owed</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="text-center p-3 border rounded bg-light">
+                        <div class="h4 text-info">${formatCurrency(totalDeficit)}</div>
+                        <div class="text-muted">Payment Deficit</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="text-center p-3 border rounded bg-light">
+                        <div class="h4 text-secondary">${avgMonthsBehind.toFixed(1)}</div>
+                        <div class="text-muted">Avg Months Behind</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-3">
+                <div class="col-md-4">
+                    <div class="text-center p-2 border rounded severity-critical">
+                        <div class="h5 text-danger">${critical}</div>
+                        <div class="small">Critical (3+ months)</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center p-2 border rounded severity-warning">
+                        <div class="h5 text-warning">${warning}</div>
+                        <div class="small">Warning (1-3 months)</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center p-2 border rounded severity-info">
+                        <div class="h5 text-info">${mild}</div>
+                        <div class="small">Recent (< 1 month)</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderPriorityTable() {
+        const tbody = document.getElementById('priorityTableBody');
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const pageData = filteredPriorities.slice(startIndex, endIndex);
+
+        tbody.innerHTML = pageData.map((item, index) => {
+            const priority = startIndex + index + 1;
+            const monthsBehind = item.months_behind || 0;
+            const severityClass = monthsBehind >= 3 ? 'table-danger' : 
+                                 monthsBehind >= 1 ? 'table-warning' : 'table-info';
+            
+            const deficit = monthsBehind * (item.monthly_payment || 0);
+            
+            return `
+                <tr class="${severityClass}">
+                    <td>
+                        <span class="badge bg-dark fs-6">${priority}</span>
+                        ${monthsBehind >= 3 ? '<i class="fas fa-exclamation-triangle text-danger ms-2" title="Critical"></i>' : ''}
+                    </td>
+                    <td>
+                        <strong>${item.customer_name}</strong>
+                    </td>
+                    <td>
+                        <small class="text-muted">${item.plan_id}</small>
+                    </td>
+                    <td>
+                        ${item.class_field ? `<span class="badge bg-secondary">${item.class_field}</span>` : '<span class="text-muted">-</span>'}
+                    </td>
+                    <td>
+                        <span class="fw-bold text-danger">${monthsBehind.toFixed(1)}</span>
+                    </td>
+                    <td>
+                        <strong class="text-success">${formatCurrency(item.total_owed || 0)}</strong>
+                    </td>
+                    <td>
+                        <span class="text-primary">${formatCurrency(item.monthly_payment || 0)}</span>
+                    </td>
+                    <td>
+                        <span class="text-danger fw-bold">${formatCurrency(deficit)}</span>
+                    </td>
+                    <td>
+                        <span class="status-badge status-${item.status || 'behind'}">
+                            ${(item.status || 'behind').charAt(0).toUpperCase() + (item.status || 'behind').slice(1)}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderPagination() {
+        const pagination = document.getElementById('priorityPagination');
+        const totalPages = Math.ceil(filteredPriorities.length / itemsPerPage);
+        
+        if (totalPages <= 1) {
+            pagination.innerHTML = '';
+            return;
+        }
+        
+        let html = '<ul class="pagination justify-content-center">';
+        
+        // Previous button
+        html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>
+                </li>`;
+        
+        // Page numbers
+        for (let i = Math.max(1, currentPage - 2); i <= Math.min(totalPages, currentPage + 2); i++) {
+            html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
+                    </li>`;
+        }
+        
+        // Next button
+        html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>
+                </li>`;
+        
+        html += '</ul>';
+        pagination.innerHTML = html;
+    }
+
+    function changePage(page) {
+        const totalPages = Math.ceil(filteredPriorities.length / itemsPerPage);
+        if (page >= 1 && page <= totalPages) {
+            currentPage = page;
+            renderPriorityTable();
+            renderPagination();
+        }
+    }
+
+    function updateTotalCount() {
+        document.getElementById('totalBehindCount').textContent = 
+            `${filteredPriorities.length} customers behind`;
+    }
+
+    async function exportCollectionsList() {
+        try {
+            // Create CSV data
+            const csvData = [
+                ['Priority', 'Customer', 'Plan ID', 'Class', 'Months Behind', 'Balance Owed', 'Monthly Payment', 'Payment Deficit', 'Status']
+            ];
+            
+            filteredPriorities.forEach((item, index) => {
+                const deficit = (item.months_behind || 0) * (item.monthly_payment || 0);
+                csvData.push([
+                    index + 1,
+                    item.customer_name,
+                    item.plan_id,
+                    item.class_field || '',
+                    (item.months_behind || 0).toFixed(1),
+                    item.total_owed || 0,
+                    item.monthly_payment || 0,
+                    deficit,
+                    item.status || 'behind'
+                ]);
+            });
+            
+            // Convert to CSV string
+            const csvString = csvData.map(row => 
+                row.map(cell => 
+                    typeof cell === 'string' && cell.includes(',') ? `"${cell}"` : cell
+                ).join(',')
+            ).join('\n');
+            
+            // Download CSV
+            const blob = new Blob([csvString], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `collection_priorities_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            
+            showToast('Collections list exported successfully', 'success');
+            
+        } catch (error) {
+            console.error('Export error:', error);
+            showToast('Error exporting collections list', 'danger');
+        }
+    }
+
+    async function refreshData() {
+        showToast('Refreshing collection data...', 'info');
+        await loadCollectionData();
+        showToast('Data refreshed', 'success');
+    }
+</script>
+{% endblock %}

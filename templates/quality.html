@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="fas fa-search me-3"></i>Data Quality Analysis</h1>
+            <div class="d-flex gap-2">
+                <button class="btn btn-success" onclick="downloadErrorReport()">
+                    <i class="fas fa-file-excel me-2"></i>Download Error Report
+                </button>
+                <button class="btn btn-outline-primary" onclick="refreshData()">
+                    <i class="fas fa-sync-alt me-2"></i>Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quality Overview -->
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Data Quality Overview</h5>
+            </div>
+            <div class="card-body">
+                <div id="qualityOverview">
+                    <!-- Quality metrics will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-trophy me-2"></i>Quality Score</h5>
+            </div>
+            <div class="card-body text-center">
+                <div id="qualityScore">
+                    <!-- Quality score will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Issue Breakdown -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Issues by Type</h5>
+            </div>
+            <div class="card-body">
+                <div id="issueBreakdown">
+                    <!-- Issue breakdown will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Problematic Customers -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-users me-2"></i>Customers with Issues</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="problematicCustomersTable">
+                        <thead>
+                            <tr>
+                                <th>Customer</th>
+                                <th>Balance</th>
+                                <th>Plans</th>
+                                <th>Issue Types</th>
+                                <th>Severity</th>
+                                <th>Classes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="problematicCustomersBody">
+                            <!-- Table content will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Processing Statistics -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Processing Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div id="processingStats">
+                    <!-- Processing stats will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let qualityData = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadQualityData();
+    });
+
+    async function loadQualityData() {
+        try {
+            // FIXED: Load actual quality data from quality API
+            const response = await fetch('/api/results/quality');
+            qualityData = await response.json();
+            
+            renderQualityOverview();
+            renderQualityScore();
+            renderIssueBreakdown();
+            renderProblematicCustomers();
+            renderProcessingStats();
+            
+        } catch (error) {
+            console.error('Error loading quality data:', error);
+            showToast('Error loading quality data', 'danger');
+        }
+    }
+
+    function renderQualityOverview() {
+        const container = document.getElementById('qualityOverview');
+        if (!container || !qualityData) return;
+        
+        const summary = qualityData.summary;
+        
+        container.innerHTML = `
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <div class="text-center">
+                        <div class="h3 text-primary">${summary.total_customers}</div>
+                        <div class="text-muted">Total Customers</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="text-center">
+                        <div class="h3 text-success">${summary.clean_customers}</div>
+                        <div class="text-muted">Clean Customers</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="text-center">
+                        <div class="h3 text-danger">${summary.problematic_customers}</div>
+                        <div class="text-muted">Problematic</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="text-center">
+                        <div class="h3 text-warning">${summary.total_issues}</div>
+                        <div class="text-muted">Total Issues</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="progress mt-3">
+                <div class="progress-bar bg-success" style="width: ${100 - summary.percentage_with_issues}%"></div>
+                <div class="progress-bar bg-danger" style="width: ${summary.percentage_with_issues}%"></div>
+            </div>
+            <div class="text-center mt-2">
+                <small class="text-muted">
+                    ${(100 - summary.percentage_with_issues).toFixed(1)}% Clean | 
+                    ${summary.percentage_with_issues.toFixed(1)}% Issues
+                </small>
+            </div>
+        `;
+    }
+
+    function renderQualityScore() {
+        const container = document.getElementById('qualityScore');
+        if (!container || !qualityData) return;
+        
+        const score = qualityData.summary.data_quality_score;
+        let scoreColor = 'danger';
+        let scoreIcon = 'fa-times-circle';
+        
+        if (score >= 80) {
+            scoreColor = 'success';
+            scoreIcon = 'fa-check-circle';
+        } else if (score >= 60) {
+            scoreColor = 'warning';
+            scoreIcon = 'fa-exclamation-circle';
+        }
+        
+        container.innerHTML = `
+            <div class="display-4 text-${scoreColor} mb-3">
+                <i class="fas ${scoreIcon} me-2"></i>${score.toFixed(1)}%
+            </div>
+            <p class="lead">Data Quality Score</p>
+            <div class="progress">
+                <div class="progress-bar bg-${scoreColor}" style="width: ${score}%"></div>
+            </div>
+        `;
+    }
+
+    function renderIssueBreakdown() {
+        const container = document.getElementById('issueBreakdown');
+        if (!container || !qualityData) return;
+        
+        const issues = qualityData.issue_breakdown || {};
+        
+        if (Object.keys(issues).length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle me-2"></i>
+                    No data quality issues found! All customers have clean payment plan data.
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '<div class="row">';
+        
+        Object.entries(issues).forEach(([issueType, count]) => {
+            const displayName = issueType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const description = getIssueDescription(issueType);
+            const severity = getIssueSeverity(issueType);
+            
+            html += `
+                <div class="col-md-6 col-lg-3 mb-3">
+                    <div class="card h-100 border-${severity}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">${displayName}</h6>
+                                    <p class="card-text text-muted small">${description}</p>
+                                </div>
+                                <span class="badge bg-${severity} rounded-pill">${count}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    function renderProblematicCustomers() {
+        const tbody = document.getElementById('problematicCustomersBody');
+        if (!tbody || !qualityData) return;
+        
+        const customers = qualityData.top_problematic_customers || [];
+        
+        if (customers.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center">
+                        <div class="alert alert-success mb-0">
+                            <i class="fas fa-check-circle me-2"></i>
+                            No problematic customers found!
+                        </div>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        tbody.innerHTML = customers.map(customer => {
+            const severityClass = customer.critical_issues.length > 0 ? 'danger' : 
+                                 customer.all_issues.length > 2 ? 'warning' : 'info';
+            
+            return `
+                <tr>
+                    <td><strong>${customer.customer_name}</strong></td>
+                    <td><span class="text-success fw-bold">${formatCurrency(customer.total_open || 0)}</span></td>
+                    <td><span class="badge bg-secondary">${customer.total_plans || 0}</span></td>
+                    <td>
+                        ${customer.all_issues.slice(0, 3).map(issue => 
+                            `<span class="badge bg-warning me-1">${issue.replace(/_/g, ' ')}</span>`
+                        ).join('')}
+                        ${customer.all_issues.length > 3 ? `<span class="text-muted">+${customer.all_issues.length - 3} more</span>` : ''}
+                    </td>
+                    <td>
+                        <span class="badge bg-${severityClass}">
+                            ${customer.critical_issues.length > 0 ? 'Critical' : 
+                              customer.all_issues.length > 2 ? 'Warning' : 'Info'}
+                        </span>
+                    </td>
+                    <td>
+                        ${customer.classes ? customer.classes.map(cls => 
+                            `<span class="badge bg-info me-1">${cls}</span>`
+                        ).join('') : '<span class="text-muted">-</span>'}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderProcessingStats() {
+        const container = document.getElementById('processingStats');
+        if (!container || !qualityData) return;
+        
+        const processing = qualityData.data_processing || {};
+        const summary = qualityData.summary || {};
+        
+        container.innerHTML = `
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <div class="text-muted">Total Rows Processed</div>
+                        <div class="h5">${(processing.total_rows_processed || 0).toLocaleString()}</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="text-muted">Invoices Processed</div>
+                        <div class="h5">${(processing.total_invoices_processed || 0).toLocaleString()}</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="text-muted">Invoices with Open Balance</div>
+                        <div class="h5 text-warning">${(processing.invoices_with_open_balance || 0).toLocaleString()}</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <div class="text-muted">Customers Found</div>
+                        <div class="h5">${(summary.total_customers || 0).toLocaleString()}</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="text-muted">Payment Plans Created</div>
+                        <div class="h5">${(summary.total_payment_plans || 0).toLocaleString()}</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="text-muted">Data Quality Score</div>
+                        <div class="h5 text-success">${(summary.data_quality_score || 0).toFixed(1)}%</div>
+                    </div>
+                </div>
+            </div>
+            
+            ${processing.classes_found && processing.classes_found.length > 0 ? `
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="mb-2">
+                        <div class="text-muted">Classes Found</div>
+                    </div>
+                    <div>
+                        ${processing.classes_found.map(cls => 
+                            `<span class="badge bg-info me-2">${cls}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+        `;
+    }
+
+    function getIssueDescription(issueType) {
+        const descriptions = {
+            'no_payment_terms': 'Plans without payment amount or frequency specified',
+            'multiple_payment_terms': 'Customers with conflicting payment schedules',
+            'missing_open_balance': 'Invoices missing balance information',
+            'future_dated': 'Invoices with future dates',
+            'asterisk_invoice': 'Invoice numbers containing asterisk (*)',
+            'missing_invoice_numbers': 'Invoices without proper numbering',
+            'typo_payment_terms': 'Payment terms with spelling errors',
+            'invalid_date_format': 'Dates in incorrect format',
+            'missing_class': 'Plans without class designation',
+            'invalid_amount': 'Negative or invalid amounts',
+            'nested_customer': 'Customers appearing as sub-entries',
+            'formatting_error': 'General data formatting issues'
+        };
+        return descriptions[issueType] || 'Data quality issue detected';
+    }
+
+    function getIssueSeverity(issueType) {
+        const criticalIssues = ['no_payment_terms', 'invalid_amount', 'missing_open_balance'];
+        const warningIssues = ['multiple_payment_terms', 'future_dated', 'missing_class'];
+        
+        if (criticalIssues.includes(issueType)) return 'danger';
+        if (warningIssues.includes(issueType)) return 'warning';
+        return 'info';
+    }
+
+    async function downloadErrorReport() {
+        try {
+            const response = await fetch('/api/download/error-excel');
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'payment_plan_errors.xlsx';
+                a.click();
+                window.URL.revokeObjectURL(url);
+                showToast('Error report downloaded', 'success');
+            } else {
+                throw new Error('Download failed');
+            }
+        } catch (error) {
+            console.error('Download error:', error);
+            showToast('Error downloading file', 'danger');
+        }
+    }
+
+    async function refreshData() {
+        showToast('Refreshing data...', 'info');
+        await loadQualityData();
+        showToast('Data refreshed', 'success');
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="fas fa-users me-3"></i>Customer Payment Tracking</h1>
+            <div class="d-flex gap-2">
+                <div class="input-group" style="width: 300px;">
+                    <input type="text" class="form-control" id="searchCustomer" placeholder="Search customers...">
+                    <button class="btn btn-outline-secondary" type="button" onclick="clearSearch()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <button class="btn btn-success" onclick="downloadCustomerData()">
+                    <i class="fas fa-download me-2"></i>Export
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtering and Summary -->
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filters</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" id="statusFilter" onchange="applyFilters()">
+                            <option value="all">All Statuses</option>
+                            <option value="current">Current</option>
+                            <option value="behind">Behind</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Class</label>
+                        <select class="form-select" id="classFilter" onchange="applyFilters()">
+                            <option value="all">All Classes</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Payment Frequency</label>
+                        <select class="form-select" id="frequencyFilter" onchange="applyFilters()">
+                            <option value="all">All Frequencies</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="bimonthly">Bi-monthly</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Sort By</label>
+                        <select class="form-select" id="sortBy" onchange="applyFilters()">
+                            <option value="months_behind_desc">Months Behind (High to Low)</option>
+                            <option value="total_owed_desc">Balance (High to Low)</option>
+                            <option value="customer_name_asc">Customer Name (A-Z)</option>
+                            <option value="monthly_payment_desc">Monthly Payment (High to Low)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Summary</h5>
+            </div>
+            <div class="card-body" id="customerSummary">
+                <!-- Summary will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Customer Table -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-table me-2"></i>Customer Details</h5>
+                    <span class="text-muted" id="tableInfo">Loading...</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Customer</th>
+                                <th>Plan ID</th>
+                                <th>Monthly Payment</th>
+                                <th>Frequency</th>
+                                <th>Balance</th>
+                                <th>% Paid</th>
+                                <th>Months Behind</th>
+                                <th>Status</th>
+                                <th>Class</th>
+                                <th>Est. Completion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customerTableBody">
+                            <!-- Table content will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Pagination -->
+                <nav id="pagination" class="mt-3">
+                    <!-- Pagination will be generated here -->
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let allCustomers = [];
+    let allPlans = [];
+    let filteredData = [];
+    let currentPage = 1;
+    const itemsPerPage = 25;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadCustomerData();
+        setupSearch();
+    });
+
+    async function loadCustomerData() {
+        try {
+            // Load dashboard data which contains customer summaries and plan details
+            const response = await fetch('/api/results/dashboard');
+            const data = await response.json();
+            
+            allCustomers = data.customer_summaries || [];
+            allPlans = data.payment_plan_details || [];
+            
+            populateClassFilter();
+            applyFilters();
+            updateSummary();
+            
+        } catch (error) {
+            console.error('Error loading customer data:', error);
+            showToast('Error loading customer data', 'danger');
+        }
+    }
+
+    function populateClassFilter() {
+        const classFilter = document.getElementById('classFilter');
+        const classes = [...new Set(allPlans.map(plan => plan.class_field).filter(Boolean))];
+        
+        classes.forEach(className => {
+            const option = document.createElement('option');
+            option.value = className;
+            option.textContent = className;
+            classFilter.appendChild(option);
+        });
+    }
+
+    function applyFilters() {
+        const statusFilter = document.getElementById('statusFilter').value;
+        const classFilter = document.getElementById('classFilter').value;
+        const frequencyFilter = document.getElementById('frequencyFilter').value;
+        const sortBy = document.getElementById('sortBy').value;
+        const searchTerm = document.getElementById('searchCustomer').value.toLowerCase();
+
+        // Filter individual plans
+        filteredData = allPlans.filter(plan => {
+            if (searchTerm && !plan.customer_name.toLowerCase().includes(searchTerm)) return false;
+            if (statusFilter !== 'all' && plan.status !== statusFilter) return false;
+            if (classFilter !== 'all' && plan.class_field !== classFilter) return false;
+            if (frequencyFilter !== 'all' && plan.frequency !== frequencyFilter) return false;
+            return true;
+        });
+
+        // Sort data
+        sortData(sortBy);
+        
+        // Reset to first page
+        currentPage = 1;
+        renderTable();
+        renderPagination();
+        updateTableInfo();
+    }
+
+    function sortData(sortBy) {
+        const [field, direction] = sortBy.split('_');
+        const isAsc = direction === 'asc';
+        
+        filteredData.sort((a, b) => {
+            let aVal, bVal;
+            
+            switch (field) {
+                case 'customer': aVal = a.customer_name; bVal = b.customer_name; break;
+                case 'total': aVal = a.total_owed; bVal = b.total_owed; break;
+                case 'months': aVal = a.months_behind; bVal = b.months_behind; break;
+                case 'monthly': aVal = a.monthly_payment; bVal = b.monthly_payment; break;
+                default: aVal = a.customer_name; bVal = b.customer_name;
+            }
+            
+            if (typeof aVal === 'string') {
+                return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            } else {
+                return isAsc ? aVal - bVal : bVal - aVal;
+            }
+        });
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('customerTableBody');
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const pageData = filteredData.slice(startIndex, endIndex);
+        
+        tbody.innerHTML = pageData.map(plan => `
+            <tr>
+                <td><strong>${plan.customer_name}</strong></td>
+                <td><small class="text-muted">${plan.plan_id}</small></td>
+                <td><strong>${formatCurrency(plan.monthly_payment || 0)}</strong></td>
+                <td>
+                    <span class="badge bg-info">${plan.frequency || 'monthly'}</span>
+                </td>
+                <td><strong class="text-success">${formatCurrency(plan.total_owed || 0)}</strong></td>
+                <td>
+                    <div class="progress" style="height: 15px;">
+                        <div class="progress-bar bg-success" style="width: ${plan.percent_paid || 0}%"></div>
+                    </div>
+                    <small>${(plan.percent_paid || 0).toFixed(1)}%</small>
+                </td>
+                <td>
+                    <span class="${(plan.months_behind || 0) > 0 ? 'text-danger fw-bold' : 'text-muted'}">${(plan.months_behind || 0).toFixed(1)}</span>
+                </td>
+                <td>
+                    <span class="status-badge status-${plan.status || 'unknown'}">
+                        ${(plan.status || 'unknown').charAt(0).toUpperCase() + (plan.status || 'unknown').slice(1)}
+                    </span>
+                </td>
+                <td>
+                    ${plan.class_field ? `<span class="badge bg-secondary">${plan.class_field}</span>` : '<span class="text-muted">-</span>'}
+                </td>
+                <td>
+                    ${plan.projected_completion ? new Date(plan.projected_completion).toLocaleDateString() : '<span class="text-muted">-</span>'}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function renderPagination() {
+        const pagination = document.getElementById('pagination');
+        const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+        
+        if (totalPages <= 1) {
+            pagination.innerHTML = '';
+            return;
+        }
+        
+        let html = '<ul class="pagination justify-content-center">';
+        
+        // Previous button
+        html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>
+                </li>`;
+        
+        // Page numbers
+        for (let i = Math.max(1, currentPage - 2); i <= Math.min(totalPages, currentPage + 2); i++) {
+            html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
+                    </li>`;
+        }
+        
+        // Next button
+        html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>
+                </li>`;
+        
+        html += '</ul>';
+        pagination.innerHTML = html;
+    }
+
+    function changePage(page) {
+        const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+        if (page >= 1 && page <= totalPages) {
+            currentPage = page;
+            renderTable();
+            renderPagination();
+            updateTableInfo();
+        }
+    }
+
+    function updateTableInfo() {
+        const totalItems = filteredData.length;
+        const startItem = (currentPage - 1) * itemsPerPage + 1;
+        const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+        
+        document.getElementById('tableInfo').textContent = 
+            `Showing ${startItem}-${endItem} of ${totalItems} plans`;
+    }
+
+    function updateSummary() {
+        const container = document.getElementById('customerSummary');
+        
+        const totalPlans = allPlans.length;
+        const behindPlans = allPlans.filter(p => (p.months_behind || 0) > 0).length;
+        const avgMonthlyPayment = allPlans.reduce((sum, p) => sum + (p.monthly_payment || 0), 0) / totalPlans;
+        
+        container.innerHTML = `
+            <div class="row text-center">
+                <div class="col-6">
+                    <div class="h4 text-primary">${totalPlans}</div>
+                    <div class="small text-muted">Total Plans</div>
+                </div>
+                <div class="col-6">
+                    <div class="h4 text-danger">${behindPlans}</div>
+                    <div class="small text-muted">Behind</div>
+                </div>
+            </div>
+            <hr>
+            <div class="text-center">
+                <div class="h5 text-info">${formatCurrency(avgMonthlyPayment)}</div>
+                <div class="small text-muted">Avg Monthly</div>
+            </div>
+        `;
+    }
+
+    function setupSearch() {
+        const searchInput = document.getElementById('searchCustomer');
+        let searchTimeout;
+        
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(applyFilters, 300);
+        });
+    }
+
+    function clearSearch() {
+        document.getElementById('searchCustomer').value = '';
+        applyFilters();
+    }
+
+    async function downloadCustomerData() {
+        try {
+            const response = await fetch('/api/download/excel');
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'customer_payment_data.xlsx';
+                a.click();
+                window.URL.revokeObjectURL(url);
+                showToast('Customer data exported successfully', 'success');
+            } else {
+                throw new Error('Export failed');
+            }
+        } catch (error) {
+            console.error('Export error:', error);
+            showToast('Error exporting data', 'danger');
+        }
+    }
+</script>
+{% endblock %}

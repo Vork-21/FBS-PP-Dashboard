@@ -1,0 +1,628 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="fas fa-download me-3"></i>Reports & Downloads</h1>
+            <div class="text-muted">
+                <small><i class="fas fa-clock me-1"></i>Last updated: <span id="lastUpdated">Loading...</span></small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Report Categories -->
+<div class="row mb-4">
+    <div class="col-lg-4 mb-3">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Excel Reports</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Comprehensive Excel workbooks with detailed analysis.</p>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-success" onclick="downloadReport('excel')">
+                        <i class="fas fa-download me-2"></i>Complete Analysis Report
+                        <br><small>All data and metrics</small>
+                    </button>
+                    
+                    <button class="btn btn-info" onclick="downloadReport('customer-excel')">
+                        <i class="fas fa-users me-2"></i>Customer Summary Report
+                        <br><small>Customer-focused data</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4 mb-3">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-file-csv me-2"></i>CSV Data Files</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Raw data exports for integration with other systems.</p>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-success" onclick="downloadReport('dashboard-csv')">
+                        <i class="fas fa-table me-2"></i>Dashboard Data
+                        <br><small>All processed data</small>
+                    </button>
+                    
+                    <button class="btn btn-outline-warning" onclick="downloadReport('collections-csv')">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Collections List
+                        <br><small>Behind customers only</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4 mb-3">
+        <div class="card h-100">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-file-code me-2"></i>JSON Data</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Structured data for developers and system integration.</p>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" onclick="downloadReport('dashboard-json')">
+                        <i class="fas fa-code me-2"></i>Dashboard JSON
+                        <br><small>Complete dashboard data</small>
+                    </button>
+                    
+                    <button class="btn btn-outline-secondary" onclick="downloadReport('summary-json')">
+                        <i class="fas fa-chart-bar me-2"></i>Summary JSON
+                        <br><small>Key metrics only</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Report Summary -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Report Summary</h5>
+            </div>
+            <div class="card-body">
+                <div id="reportSummary">
+                    <!-- Summary will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Custom Report Builder -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Custom Report Builder</h5>
+            </div>
+            <div class="card-body">
+                <form id="customReportForm">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label class="form-label">Report Type</label>
+                                <select class="form-select" id="customReportType">
+                                    <option value="customer-summary">Customer Summary</option>
+                                    <option value="payment-details">Payment Details</option>
+                                    <option value="collections-focus">Collections Focus</option>
+                                    <option value="projections">Payment Projections</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label class="form-label">Class Filter</label>
+                                <select class="form-select" id="customClassFilter">
+                                    <option value="all">All Classes</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label class="form-label">Status Filter</label>
+                                <select class="form-select" id="customStatusFilter">
+                                    <option value="all">All Statuses</option>
+                                    <option value="current">Current</option>
+                                    <option value="behind">Behind</option>
+                                    <option value="completed">Completed</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label class="form-label">Format</label>
+                                <select class="form-select" id="customFormat">
+                                    <option value="excel">Excel (.xlsx)</option>
+                                    <option value="csv">CSV (.csv)</option>
+                                    <option value="json">JSON (.json)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Include Columns</label>
+                                <div class="form-check-container" style="max-height: 150px; overflow-y: auto;">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="col_customer_name" checked>
+                                        <label class="form-check-label" for="col_customer_name">Customer Name</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="col_plan_id" checked>
+                                        <label class="form-check-label" for="col_plan_id">Plan ID</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="col_monthly_payment" checked>
+                                        <label class="form-check-label" for="col_monthly_payment">Monthly Payment</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="col_total_owed" checked>
+                                        <label class="form-check-label" for="col_total_owed">Total Owed</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="col_months_behind" checked>
+                                        <label class="form-check-label" for="col_months_behind">Months Behind</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="col_status">
+                                        <label class="form-check-label" for="col_status">Status</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="col_class_field">
+                                        <label class="form-check-label" for="col_class_field">Class</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="col_frequency">
+                                        <label class="form-check-label" for="col_frequency">Payment Frequency</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Additional Options</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="include_summary">
+                                    <label class="form-check-label" for="include_summary">
+                                        Include Summary Sheet
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="group_by_customer" checked>
+                                    <label class="form-check-label" for="group_by_customer">
+                                        Group by Customer
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="sort_by_priority">
+                                    <label class="form-check-label" for="sort_by_priority">
+                                        Sort by Collection Priority
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center">
+                        <button type="button" class="btn btn-primary btn-lg" onclick="generateCustomReport()">
+                            <i class="fas fa-magic me-2"></i>Generate Custom Report
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Report Instructions -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Report Guide</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-file-excel me-2 text-success"></i>Excel Reports</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i><strong>Complete Analysis:</strong> All processed data</li>
+                            <li><i class="fas fa-check text-success me-2"></i><strong>Customer Summary:</strong> Customer-focused view</li>
+                            <li><i class="fas fa-check text-success me-2"></i><strong>Ready for Excel:</strong> Formatted and organized</li>
+                        </ul>
+                        
+                        <h6><i class="fas fa-file-csv me-2 text-primary"></i>CSV Files</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i>Import into other systems</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Use with database applications</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Lightweight and fast</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-code me-2 text-info"></i>JSON Data</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i>Perfect for developers</li>
+                            <li><i class="fas fa-check text-success me-2"></i>API integration ready</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Structured and machine-readable</li>
+                        </ul>
+                        
+                        <h6><i class="fas fa-cogs me-2 text-warning"></i>Custom Reports</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i>Choose exactly what you need</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Filter by class, status, or other criteria</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Multiple output formats</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let dashboardData = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadReportData();
+        loadAvailableClasses();
+        updateLastUpdated();
+    });
+
+    async function loadReportData() {
+        try {
+            const response = await fetch('/api/results/dashboard');
+            dashboardData = await response.json();
+            
+            updateReportSummary();
+            
+        } catch (error) {
+            console.error('Error loading report data:', error);
+            showToast('Error loading report data', 'danger');
+        }
+    }
+
+    async function loadAvailableClasses() {
+        try {
+            // Extract classes from dashboard data
+            const plans = dashboardData?.payment_plan_details || [];
+            const classes = [...new Set(plans.map(plan => plan.class_field).filter(Boolean))];
+            
+            const classFilter = document.getElementById('customClassFilter');
+            classes.forEach(className => {
+                const option = document.createElement('option');
+                option.value = className;
+                option.textContent = className;
+                classFilter.appendChild(option);
+            });
+            
+        } catch (error) {
+            console.error('Error loading classes:', error);
+        }
+    }
+
+    function updateReportSummary() {
+        const container = document.getElementById('reportSummary');
+        if (!dashboardData) {
+            container.innerHTML = '<div class="alert alert-info">No data available for reporting.</div>';
+            return;
+        }
+        
+        const customers = dashboardData.customer_summaries || [];
+        const plans = dashboardData.payment_plan_details || [];
+        const totalOutstanding = plans.reduce((sum, plan) => sum + (plan.total_owed || 0), 0);
+        const behindPlans = plans.filter(plan => (plan.months_behind || 0) > 0).length;
+        
+        container.innerHTML = `
+            <div class="row">
+                <div class="col-md-3 text-center">
+                    <div class="h4 text-primary">${customers.length}</div>
+                    <div class="text-muted">Total Customers</div>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="h4 text-info">${plans.length}</div>
+                    <div class="text-muted">Payment Plans</div>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="h4 text-success">${formatCurrency(totalOutstanding)}</div>
+                    <div class="text-muted">Total Outstanding</div>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="h4 text-warning">${behindPlans}</div>
+                    <div class="text-muted">Plans Behind</div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function downloadReport(reportType) {
+        let endpoint;
+        let filename;
+        
+        try {
+            switch (reportType) {
+                case 'excel':
+                case 'customer-excel':
+                    endpoint = '/api/download/excel';
+                    filename = 'payment_plan_analysis.xlsx';
+                    break;
+                case 'dashboard-csv':
+                    endpoint = '/api/download/excel'; // Convert to CSV if needed
+                    filename = 'dashboard_data.csv';
+                    break;
+                case 'collections-csv':
+                    // Create collections CSV from dashboard data
+                    downloadCollectionsCSV();
+                    return;
+                case 'dashboard-json':
+                    downloadDashboardJSON();
+                    return;
+                case 'summary-json':
+                    downloadSummaryJSON();
+                    return;
+                default:
+                    throw new Error('Unknown report type');
+            }
+            
+            // Show loading state
+            const button = event.target;
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Downloading...';
+            button.disabled = true;
+            
+            const response = await fetch(endpoint);
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                showToast(`${filename} downloaded successfully`, 'success');
+            } else {
+                throw new Error('Download failed');
+            }
+            
+            // Restore button
+            button.innerHTML = originalText;
+            button.disabled = false;
+            
+        } catch (error) {
+            console.error('Download error:', error);
+            showToast('Error downloading report', 'danger');
+            
+            // Restore button
+            if (event.target) {
+                event.target.innerHTML = event.target.dataset.originalText || 'Download';
+                event.target.disabled = false;
+            }
+        }
+    }
+
+    function downloadCollectionsCSV() {
+        if (!dashboardData) {
+            showToast('No data available', 'danger');
+            return;
+        }
+        
+        const plans = dashboardData.payment_plan_details || [];
+        const behindPlans = plans.filter(plan => (plan.months_behind || 0) > 0);
+        
+        const csvData = [
+            ['Customer', 'Plan ID', 'Class', 'Months Behind', 'Balance Owed', 'Monthly Payment', 'Status']
+        ];
+        
+        behindPlans.forEach(plan => {
+            csvData.push([
+                plan.customer_name,
+                plan.plan_id,
+                plan.class_field || '',
+                (plan.months_behind || 0).toFixed(1),
+                plan.total_owed || 0,
+                plan.monthly_payment || 0,
+                plan.status || 'behind'
+            ]);
+        });
+        
+        downloadCSV(csvData, 'collections_list.csv');
+    }
+
+    function downloadDashboardJSON() {
+        if (!dashboardData) {
+            showToast('No data available', 'danger');
+            return;
+        }
+        
+        downloadJSON(dashboardData, 'dashboard_data.json');
+    }
+
+    function downloadSummaryJSON() {
+        if (!dashboardData) {
+            showToast('No data available', 'danger');
+            return;
+        }
+        
+        const summary = {
+            summary_metrics: dashboardData.summary_metrics,
+            customer_count: (dashboardData.customer_summaries || []).length,
+            plan_count: (dashboardData.payment_plan_details || []).length,
+            timestamp: new Date().toISOString()
+        };
+        
+        downloadJSON(summary, 'summary_data.json');
+    }
+
+    function downloadCSV(data, filename) {
+        const csvString = data.map(row => 
+            row.map(cell => 
+                typeof cell === 'string' && cell.includes(',') ? `"${cell}"` : cell
+            ).join(',')
+        ).join('\n');
+        
+        const blob = new Blob([csvString], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        
+        showToast(`${filename} downloaded successfully`, 'success');
+    }
+
+    function downloadJSON(data, filename) {
+        const jsonString = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        
+        showToast(`${filename} downloaded successfully`, 'success');
+    }
+
+    function generateCustomReport() {
+        const formData = {
+            reportType: document.getElementById('customReportType').value,
+            classFilter: document.getElementById('customClassFilter').value,
+            statusFilter: document.getElementById('customStatusFilter').value,
+            format: document.getElementById('customFormat').value,
+            columns: [],
+            options: {}
+        };
+        
+        // Collect selected columns
+        document.querySelectorAll('.form-check-input[id^="col_"]:checked').forEach(checkbox => {
+            formData.columns.push(checkbox.id.replace('col_', ''));
+        });
+        
+        // Collect options
+        formData.options.includeSummary = document.getElementById('include_summary').checked;
+        formData.options.groupByCustomer = document.getElementById('group_by_customer').checked;
+        formData.options.sortByPriority = document.getElementById('sort_by_priority').checked;
+        
+        try {
+            if (!dashboardData) {
+                throw new Error('No data available');
+            }
+            
+            const button = event.target;
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-cogs fa-spin me-2"></i>Generating...';
+            button.disabled = true;
+            
+            // Filter data based on selections
+            let filteredPlans = dashboardData.payment_plan_details || [];
+            
+            if (formData.classFilter !== 'all') {
+                filteredPlans = filteredPlans.filter(plan => plan.class_field === formData.classFilter);
+            }
+            
+            if (formData.statusFilter !== 'all') {
+                filteredPlans = filteredPlans.filter(plan => plan.status === formData.statusFilter);
+            }
+            
+            // Sort data
+            if (formData.options.sortByPriority) {
+                filteredPlans.sort((a, b) => {
+                    const aBehind = a.months_behind || 0;
+                    const bBehind = b.months_behind || 0;
+                    if (bBehind !== aBehind) {
+                        return bBehind - aBehind;
+                    }
+                    return (b.total_owed || 0) - (a.total_owed || 0);
+                });
+            }
+            
+            // Generate report based on format
+            if (formData.format === 'csv' || formData.format === 'json') {
+                generateCustomCSVOrJSON(filteredPlans, formData);
+            } else {
+                // For Excel, use existing endpoint but notify about limitations
+                downloadReport('excel');
+                showToast('Custom Excel generation not yet implemented. Downloaded standard report.', 'info');
+            }
+            
+            button.innerHTML = originalText;
+            button.disabled = false;
+            
+        } catch (error) {
+            console.error('Custom report error:', error);
+            showToast('Error generating custom report: ' + error.message, 'danger');
+            
+            // Restore button
+            if (event.target) {
+                event.target.innerHTML = '<i class="fas fa-magic me-2"></i>Generate Custom Report';
+                event.target.disabled = false;
+            }
+        }
+    }
+
+    function generateCustomCSVOrJSON(data, formData) {
+        const timestamp = new Date().toISOString().split('T')[0];
+        const filename = `custom_${formData.reportType}_${timestamp}.${formData.format}`;
+        
+        if (formData.format === 'csv') {
+            // Generate CSV with selected columns
+            const headers = formData.columns.map(col => col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
+            const csvData = [headers];
+            
+            data.forEach(plan => {
+                const row = formData.columns.map(col => {
+                    const value = plan[col];
+                    if (col.includes('owed') || col.includes('payment')) {
+                        return value || 0;
+                    }
+                    return value || '';
+                });
+                csvData.push(row);
+            });
+            
+            downloadCSV(csvData, filename);
+        } else if (formData.format === 'json') {
+            // Generate JSON with selected columns
+            const jsonData = {
+                report_type: formData.reportType,
+                generated_at: new Date().toISOString(),
+                filters: {
+                    class: formData.classFilter,
+                    status: formData.statusFilter
+                },
+                options: formData.options,
+                data: data.map(plan => {
+                    const filtered = {};
+                    formData.columns.forEach(col => {
+                        filtered[col] = plan[col];
+                    });
+                    return filtered;
+                })
+            };
+            
+            downloadJSON(jsonData, filename);
+        }
+    }
+
+    function updateLastUpdated() {
+        document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+    }
+</script>
+{% endblock %}

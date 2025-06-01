@@ -1,0 +1,678 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="fas fa-chart-line me-3"></i>Payment Projections</h1>
+            <div class="d-flex gap-2">
+                <button class="btn btn-success" onclick="exportProjections()">
+                    <i class="fas fa-file-excel me-2"></i>Export Projections
+                </button>
+                <button class="btn btn-outline-primary" onclick="refreshProjections()">
+                    <i class="fas fa-sync-alt me-2"></i>Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="metric-card bg-info">
+            <div class="metric-value" id="totalExpectedMonthly">$0</div>
+            <div class="metric-label">Expected Monthly</div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="metric-card bg-success">
+            <div class="metric-value" id="onTrackPlans">0</div>
+            <div class="metric-label">On Track Plans</div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="metric-card bg-warning">
+            <div class="metric-value" id="behindPlans">0</div>
+            <div class="metric-label">Behind Plans</div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="metric-card bg-primary">
+            <div class="metric-value" id="avgCompletionMonths">0</div>
+            <div class="metric-label">Avg Completion (Months)</div>
+        </div>
+    </div>
+</div>
+
+<!-- Settings -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-calendar me-2"></i>Projection Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="form-label">Time Range</label>
+                        <select class="form-select" id="timeRange" onchange="updateProjections()">
+                            <option value="6">Next 6 Months</option>
+                            <option value="12" selected>Next 12 Months</option>
+                            <option value="24">Next 24 Months</option>
+                            <option value="36">Next 36 Months</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Class Filter</label>
+                        <select class="form-select" id="classFilter" onchange="updateProjections()">
+                            <option value="">All Classes</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Customer Scenario</label>
+                        <select class="form-select" id="scenarioSelect" onchange="updateProjections()">
+                            <option value="current">Current Status</option>
+                            <option value="restart">If Restarted Today</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">View Type</label>
+                        <select class="form-select" id="viewType" onchange="toggleViews()">
+                            <option value="overview">Overview Charts</option>
+                            <option value="customers">Customer Timeline</option>
+                            <option value="both" selected>Both Views</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Indicator -->
+<div id="loadingIndicator" class="text-center py-4" style="display: none;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading projections...</span>
+    </div>
+    <div class="mt-2">Calculating payment projections...</div>
+</div>
+
+<!-- Overview Section -->
+<div id="overviewSection">
+    <!-- Portfolio Chart -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-area me-2"></i>Monthly Payment Projections</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="portfolioChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Schedule Table -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>Monthly Payment Schedule</h5>
+                        <span class="badge bg-info" id="totalProjectedBadge">$0 Total</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Month</th>
+                                    <th>Expected Payments</th>
+                                    <th>Active Customers</th>
+                                    <th>Completing</th>
+                                    <th>Cumulative Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="monthlyScheduleTable">
+                                <!-- Data will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Customer Timeline Section -->
+<div id="customerSection">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-users-clock me-2"></i>Customer Payment Timeline</h5>
+                        <div class="d-flex gap-2">
+                            <input type="text" class="form-control" id="customerSearch" placeholder="Search customers..." style="width: 250px;">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="clearCustomerSearch()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="customerTimelineContainer">
+                        <!-- Customer timeline will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let portfolioChart = null;
+    let currentProjectionData = null;
+    let currentPortfolioData = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadClassOptions();
+        updateProjections();
+        setupCustomerSearch();
+    });
+
+    async function loadClassOptions() {
+        try {
+            const response = await fetch('/api/classes');
+            const data = await response.json();
+            
+            const classFilter = document.getElementById('classFilter');
+            data.classes.forEach(className => {
+                const option = document.createElement('option');
+                option.value = className;
+                option.textContent = className;
+                classFilter.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Error loading classes:', error);
+        }
+    }
+
+    async function updateProjections() {
+        const timeRange = document.getElementById('timeRange').value;
+        const classFilter = document.getElementById('classFilter').value;
+        const scenario = document.getElementById('scenarioSelect').value;
+
+        showLoading(true);
+
+        try {
+            // Load summary data
+            await loadSummaryData(timeRange, scenario);
+            
+            // Load portfolio data
+            await loadPortfolioData(timeRange, scenario, classFilter);
+            
+            // Load customer data
+            await loadCustomerData(timeRange, scenario, classFilter);
+            
+        } catch (error) {
+            console.error('Error updating projections:', error);
+            showToast('Error loading projections', 'danger');
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    async function loadSummaryData(months, scenario) {
+        const response = await fetch(`/api/projections/summary?months=${months}&scenario=${scenario}`);
+        const data = await response.json();
+        
+        document.getElementById('totalExpectedMonthly').textContent = formatCurrency(data.total_expected_monthly);
+        document.getElementById('onTrackPlans').textContent = data.on_track_customers;
+        document.getElementById('behindPlans').textContent = data.behind_customers;
+        document.getElementById('avgCompletionMonths').textContent = data.average_completion_months;
+    }
+
+    async function loadPortfolioData(months, scenario, classFilter) {
+        const params = new URLSearchParams({
+            months: months,
+            scenario: scenario
+        });
+        
+        if (classFilter) {
+            params.append('class_filter', classFilter);
+        }
+
+        const response = await fetch(`/api/projections/portfolio?${params}`);
+        currentPortfolioData = await response.json();
+        
+        updatePortfolioChart();
+        updateMonthlyScheduleTable();
+    }
+
+    async function loadCustomerData(months, scenario, classFilter) {
+        const params = new URLSearchParams({
+            months: months,
+            scenario: scenario
+        });
+        
+        if (classFilter) {
+            params.append('class_filter', classFilter);
+        }
+
+        const response = await fetch(`/api/projections/customers?${params}`);
+        currentProjectionData = await response.json();
+        
+        updateCustomerTimeline();
+    }
+
+    function updatePortfolioChart() {
+        if (!currentPortfolioData) return;
+
+        const ctx = document.getElementById('portfolioChart');
+        
+        if (portfolioChart) {
+            portfolioChart.destroy();
+        }
+
+        const monthlyData = currentPortfolioData.monthly_projections;
+        
+        portfolioChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: monthlyData.map(month => {
+                    const date = new Date(month.date);
+                    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                }),
+                datasets: [{
+                    label: 'Expected Monthly Payments',
+                    data: monthlyData.map(month => month.expected_payment),
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return formatCurrency(value);
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Portfolio Payment Projections - Python Calculated'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Expected: ' + formatCurrency(context.parsed.y);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateMonthlyScheduleTable() {
+        if (!currentPortfolioData) return;
+
+        const tbody = document.getElementById('monthlyScheduleTable');
+        const monthlyData = currentPortfolioData.monthly_projections;
+        
+        const totalExpected = currentPortfolioData.summary.total_expected_collection;
+        document.getElementById('totalProjectedBadge').textContent = formatCurrency(totalExpected) + ' Total';
+
+        tbody.innerHTML = monthlyData.map(month => {
+            const date = new Date(month.date);
+            const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+            
+            return `
+                <tr>
+                    <td><strong>${monthName}</strong></td>
+                    <td><span class="text-success fw-bold">${formatCurrency(month.expected_payment)}</span></td>
+                    <td><span class="badge bg-info">${month.active_customers}</span></td>
+                    <td><span class="badge bg-warning">${month.completing_customers}</span></td>
+                    <td><span class="text-secondary">${formatCurrency(month.cumulative_total)}</span></td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function updateCustomerTimeline() {
+        if (!currentProjectionData) return;
+
+        const container = document.getElementById('customerTimelineContainer');
+        
+        // Apply search filter
+        const searchTerm = document.getElementById('customerSearch').value.toLowerCase();
+        let filteredData = currentProjectionData;
+        
+        if (searchTerm) {
+            filteredData = currentProjectionData.filter(customer => 
+                customer.customer_name.toLowerCase().includes(searchTerm)
+            );
+        }
+
+        // Sort by total monthly payment (highest first)
+        filteredData.sort((a, b) => b.total_monthly_payment - a.total_monthly_payment);
+
+        if (filteredData.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-info text-center">
+                    <i class="fas fa-info-circle me-2"></i>
+                    No customers found matching your search criteria.
+                </div>
+            `;
+            return;
+        }
+
+        let html = `
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Customer</th>
+                            <th>Monthly Payment</th>
+                            <th>Total Owed</th>
+                            <th>Plans</th>
+                            <th>Completion</th>
+                            <th>Payment Schedule</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        filteredData.forEach((customer, index) => {
+            const completionText = customer.completion_month > 0 ? 
+                `${customer.completion_month} months` : 'Unknown';
+            
+            // Show upcoming payment months
+            const paymentMonths = customer.timeline
+                .filter(month => month.monthly_payment > 0)
+                .slice(0, 6)
+                .map(month => `<span class="badge bg-success me-1" title="Month ${month.month}: ${formatCurrency(month.monthly_payment)}">${month.month}</span>`)
+                .join('');
+
+            html += `
+                <tr>
+                    <td>
+                        <strong>${customer.customer_name}</strong>
+                        <br><small class="text-muted">${customer.plan_count} payment plan${customer.plan_count > 1 ? 's' : ''}</small>
+                    </td>
+                    <td>
+                        <span class="text-success fw-bold">${formatCurrency(customer.total_monthly_payment)}</span>
+                        <br><small class="text-muted">per payment</small>
+                    </td>
+                    <td>
+                        <span class="fw-bold">${formatCurrency(customer.total_owed)}</span>
+                    </td>
+                    <td>
+                        <span class="badge bg-info">${customer.plan_count}</span>
+                    </td>
+                    <td>
+                        <span class="badge ${customer.completion_month <= 12 ? 'bg-success' : customer.completion_month <= 24 ? 'bg-warning' : 'bg-info'}">
+                            ${completionText}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-wrap gap-1">
+                            ${paymentMonths || '<span class="text-muted">No payments</span>'}
+                        </div>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="showCustomerDetails('${customer.customer_name}')">
+                            <i class="fas fa-eye"></i> Details
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        container.innerHTML = html;
+    }
+
+    async function showCustomerDetails(customerName) {
+        const timeRange = document.getElementById('timeRange').value;
+        const scenario = document.getElementById('scenarioSelect').value;
+
+        try {
+            const response = await fetch(`/api/projections/customer/${encodeURIComponent(customerName)}?months=${timeRange}&scenario=${scenario}`);
+            const customerData = await response.json();
+
+            // Create modal
+            const modalHtml = `
+                <div class="modal fade" id="customerDetailsModal" tabindex="-1">
+                    <div class="modal-dialog modal-xl">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    <i class="fas fa-user me-2"></i>${customerData.customer_name} - Payment Timeline
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-3">
+                                        <div class="text-center p-3 border rounded">
+                                            <div class="h4 text-success">${formatCurrency(customerData.total_monthly_payment)}</div>
+                                            <div class="text-muted">Payment Amount</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center p-3 border rounded">
+                                            <div class="h4 text-info">${formatCurrency(customerData.total_owed)}</div>
+                                            <div class="text-muted">Total Owed</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center p-3 border rounded">
+                                            <div class="h4 text-primary">${customerData.plan_count}</div>
+                                            <div class="text-muted">Payment Plans</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center p-3 border rounded">
+                                            <div class="h4 text-warning">${customerData.completion_month}</div>
+                                            <div class="text-muted">Months to Complete</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Month</th>
+                                                <th>Date</th>
+                                                <th>Payment Amount</th>
+                                                <th>Plan Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${customerData.timeline.map(month => `
+                                                <tr class="${month.monthly_payment > 0 ? '' : 'table-light'}">
+                                                    <td><strong>Month ${month.month}</strong></td>
+                                                    <td>${new Date(month.date).toLocaleDateString()}</td>
+                                                    <td>
+                                                        <span class="${month.monthly_payment > 0 ? 'text-success fw-bold' : 'text-muted'}">
+                                                            ${month.monthly_payment > 0 ? formatCurrency(month.monthly_payment) : 'No Payment'}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        ${month.plan_details.map(detail => `
+                                                            <div class="small">
+                                                                <span class="badge bg-light text-dark">${detail.plan_id}</span>
+                                                                ${formatCurrency(detail.payment_amount)}
+                                                                <span class="text-muted">(${detail.frequency})</span>
+                                                                ${detail.is_final_payment ? '<span class="badge bg-warning ms-1">Final</span>' : ''}
+                                                                <br><small class="text-muted">Payment ${detail.payment_number}/${detail.total_payments}</small>
+                                                            </div>
+                                                        `).join('')}
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                <button type="button" class="btn btn-primary" onclick="exportCustomerTimeline('${customerData.customer_name}')">
+                                    <i class="fas fa-download me-2"></i>Export Timeline
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Remove existing modal if any
+            const existingModal = document.getElementById('customerDetailsModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+
+            // Add new modal
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('customerDetailsModal'));
+            modal.show();
+
+        } catch (error) {
+            console.error('Error loading customer details:', error);
+            showToast('Error loading customer details', 'danger');
+        }
+    }
+
+    async function exportCustomerTimeline(customerName) {
+        const timeRange = document.getElementById('timeRange').value;
+        const scenario = document.getElementById('scenarioSelect').value;
+
+        try {
+            const response = await fetch(`/api/projections/export/${encodeURIComponent(customerName)}?months=${timeRange}&scenario=${scenario}`);
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${customerName.replace(/[^a-zA-Z0-9]/g, '_')}_projection_${scenario}.csv`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                showToast(`${customerName} timeline exported`, 'success');
+            } else {
+                throw new Error('Export failed');
+            }
+        } catch (error) {
+            console.error('Error exporting customer timeline:', error);
+            showToast('Error exporting timeline', 'danger');
+        }
+    }
+
+    function setupCustomerSearch() {
+        const searchInput = document.getElementById('customerSearch');
+        let searchTimeout;
+        
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                updateCustomerTimeline();
+            }, 300);
+        });
+    }
+
+    function clearCustomerSearch() {
+        document.getElementById('customerSearch').value = '';
+        updateCustomerTimeline();
+    }
+
+    function toggleViews() {
+        const viewType = document.getElementById('viewType').value;
+        const overviewSection = document.getElementById('overviewSection');
+        const customerSection = document.getElementById('customerSection');
+        
+        if (viewType === 'overview') {
+            overviewSection.style.display = 'block';
+            customerSection.style.display = 'none';
+        } else if (viewType === 'customers') {
+            overviewSection.style.display = 'none';
+            customerSection.style.display = 'block';
+        } else {
+            overviewSection.style.display = 'block';
+            customerSection.style.display = 'block';
+        }
+    }
+
+    function showLoading(show) {
+        document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
+    }
+
+    async function exportProjections() {
+        try {
+            const response = await fetch('/api/download/excel');
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'payment_projections.xlsx';
+                a.click();
+                window.URL.revokeObjectURL(url);
+                showToast('Projections exported successfully', 'success');
+            } else {
+                throw new Error('Export failed');
+            }
+        } catch (error) {
+            console.error('Export error:', error);
+            showToast('Error exporting projections', 'danger');
+        }
+    }
+
+    async function refreshProjections() {
+        showToast('Refreshing projections...', 'info');
+        await updateProjections();
+        showToast('Projections refreshed', 'success');
+    }
+
+    // Utility function for currency formatting
+    function formatCurrency(amount) {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(amount);
+    }
+
+    // Toast notification function (assumes you have this in your base template)
+    function showToast(message, type) {
+        // Implementation depends on your existing toast system
+        console.log(`${type.toUpperCase()}: ${message}`);
+    }
+</script>
+{% endblock %}
